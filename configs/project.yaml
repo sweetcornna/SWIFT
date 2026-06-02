@@ -1,0 +1,12 @@
+project:
+  name: SWIFT
+  title: Low-Altitude Swift Wing
+  domain: urban drone delivery 3D obstacle avoidance
+  schedule:
+    start: 2026-05
+    finish: 2027-05
+  technical_line:
+    decision: PPO
+    perception: HCA
+    safety_prior: APF
+    simulation: PyBullet

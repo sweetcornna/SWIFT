@@ -1,0 +1,11 @@
+metrics:
+  - success_rate
+  - collision_rate
+  - average_path_length
+  - path_smoothness
+  - convergence_episodes
+  - minimum_inter_drone_distance
+artifacts:
+  root: outputs
+  episode_logs: outputs\episodes
+  experiment_reports: outputs\reports

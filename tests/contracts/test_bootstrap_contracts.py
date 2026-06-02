@@ -1,0 +1,33 @@
+import pytest
+
+from swift.envs import BootstrapDroneEnv, UnsupportedOperationError
+from swift.experiments import ExperimentMetric, ExperimentSpec
+from swift.rl import APFConfig, HCAConfig, PPOConfig
+
+
+def test_bootstrap_environment_declares_shapes_and_blocks_runtime_use():
+    env = BootstrapDroneEnv(observation_size=24, action_size=3)
+
+    assert env.observation_shape == (24,)
+    assert env.action_shape == (3,)
+    with pytest.raises(UnsupportedOperationError, match="outside bootstrap scope"):
+        env.reset()
+
+
+def test_rl_configs_capture_project_defaults():
+    assert PPOConfig().clip_range == 0.2
+    assert HCAConfig().target_attention_heads == 4
+    assert APFConfig().repulsive_gain == 1.0
+
+
+def test_experiment_spec_names_ablation_variants():
+    spec = ExperimentSpec(
+        name="bootstrap-ablation-matrix",
+        variants=("mlp_ppo", "hca_ppo", "hca_apf_ppo"),
+        metrics=(
+            ExperimentMetric.SUCCESS_RATE,
+            ExperimentMetric.PATH_SMOOTHNESS,
+        ),
+    )
+
+    assert spec.variants == ("mlp_ppo", "hca_ppo", "hca_apf_ppo")
