@@ -44,7 +44,8 @@ class PyBulletVelocityTrainingEnv:
             runtime = PyBulletVelocityRuntimeEnv(
                 simulation_settings,
                 max_speed=self.settings.max_speed,
-                enable_obstacles=bool(enable_pybullet_obstacles),
+                enable_obstacles=bool(enable_pybullet_obstacles and not self.settings.obstacles),
+                swift_obstacles=self.settings.obstacles if enable_pybullet_obstacles else (),
                 velocity_aviary_cls=velocity_aviary_cls,
                 drone_model=drone_model,
                 physics=physics,

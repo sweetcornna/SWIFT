@@ -337,6 +337,92 @@ def test_pybullet_training_env_uses_swift_obstacle_tail_without_builtin_pybullet
     assert step_info["collided"] is False
 
 
+def test_runtime_env_injects_and_tracks_swift_configured_obstacle_bodies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletSwiftObstacles()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        enable_obstacles=True,
+        swift_obstacles=(ObstacleState(position=(2.0, 3.0, 4.0), radius=0.4),),
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, reset_info = runtime.reset(seed=41)
+    runtime.close()
+
+    assert observation[0:3] == pytest.approx((1.0, 2.0, 3.0))
+    assert fake_pybullet.collision_shapes == [(0.4, 123)]
+    assert fake_pybullet.multi_bodies == [(900, (2.0, 3.0, 4.0), 123)]
+    assert fake_pybullet.contact_queries == [(1, 900, 123)]
+    assert reset_info["nearest_obstacle_body_id"] == 900
+    assert reset_info["nearest_obstacle_relative"] == pytest.approx((1.0, 1.0, 1.0))
+    assert reset_info["nearest_obstacle_radius"] == pytest.approx(0.4)
+
+
+def test_runtime_env_recreates_swift_obstacle_bodies_after_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletSwiftObstacles()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        enable_obstacles=True,
+        swift_obstacles=(ObstacleState(position=(2.0, 3.0, 4.0), radius=0.4),),
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    runtime.reset(seed=43)
+    runtime.reset(seed=44)
+    runtime.close()
+
+    assert fake_pybullet.multi_bodies == [
+        (900, (2.0, 3.0, 4.0), 123),
+        (901, (2.0, 3.0, 4.0), 123),
+    ]
+    assert fake_pybullet.contact_queries[-1] == (1, 901, 123)
+    assert runtime._swift_obstacle_body_ids == (901,)
+
+
+def test_pybullet_training_env_passes_configured_obstacles_to_runtime_when_enabled(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    captured_kwargs = {}
+    settings = SimpleAvoidanceSettings(
+        obstacles=(ObstacleState(position=(2.0, 0.0, 1.0), radius=0.3),),
+    )
+
+    def aviary_factory(**kwargs):
+        captured_kwargs["kwargs"] = kwargs
+        return FakeVelocityAviary()
+
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        enable_pybullet_obstacles=True,
+        velocity_aviary_cls=aviary_factory,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    training_env.close()
+
+    assert captured_kwargs["kwargs"]["obstacles"] is False
+    assert training_env._runtime._swift_obstacles == settings.obstacles
+
+
 def test_pybullet_training_env_detects_collision_against_configured_static_obstacle(tmp_path: Path):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
@@ -490,3 +576,54 @@ class FakePyBulletContacts:
 class FakePyBulletContactsWithBrokenAabb(FakePyBulletContacts):
     def getAABB(self, bodyUniqueId=None, physicsClientId=None):
         raise RuntimeError("AABB unavailable")
+
+
+class FakePyBulletSwiftObstacles(FakePyBulletContacts):
+    GEOM_SPHERE = 2
+
+    def __init__(self) -> None:
+        self.collision_shapes = []
+        self.multi_bodies = []
+        self.contact_queries = []
+        self._next_body_id = 900
+
+    def getNumBodies(self, physicsClientId=None):
+        raise AssertionError("tracked SWIFT obstacle bodies should avoid scanning all PyBullet bodies")
+
+    def createCollisionShape(self, shapeType=None, radius=None, physicsClientId=None):
+        assert shapeType == self.GEOM_SPHERE
+        self.collision_shapes.append((radius, physicsClientId))
+        return self._next_body_id
+
+    def createMultiBody(
+        self,
+        baseMass=None,
+        baseCollisionShapeIndex=None,
+        basePosition=None,
+        physicsClientId=None,
+    ):
+        assert baseMass == 0.0
+        self.multi_bodies.append((baseCollisionShapeIndex, tuple(basePosition), physicsClientId))
+        body_id = self._next_body_id
+        self._next_body_id += 1
+        return body_id
+
+    def getContactPoints(self, bodyA=None, bodyB=None, physicsClientId=None):
+        self.contact_queries.append((bodyA, bodyB, physicsClientId))
+        return []
+
+    def getClosestPoints(self, bodyA=None, bodyB=None, distance=None, physicsClientId=None):
+        assert bodyA == 1
+        assert bodyB in {900, 901}
+        assert physicsClientId == 123
+        return [(0, bodyA, bodyB, -1, -1, (0, 0, 0), (0, 0, 0), (0, 0, 1), 0.6, 3.0)]
+
+    def getBasePositionAndOrientation(self, bodyUniqueId=None, physicsClientId=None):
+        assert bodyUniqueId in {900, 901}
+        assert physicsClientId == 123
+        return (2.0, 3.0, 4.0), (0, 0, 0, 1)
+
+    def getAABB(self, bodyUniqueId=None, physicsClientId=None):
+        assert bodyUniqueId in {900, 901}
+        assert physicsClientId == 123
+        return (1.6, 2.6, 3.6), (2.4, 3.4, 4.4)

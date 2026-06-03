@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import math
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from swift.config import SimulationSettings
-from swift.core import DroneAction
+from swift.core import DroneAction, ObstacleState
 
 
 class PyBulletRuntimeUnavailableError(RuntimeError):
@@ -37,6 +38,7 @@ class PyBulletVelocityRuntimeEnv:
         *,
         max_speed: float = 1.0,
         enable_obstacles: bool = False,
+        swift_obstacles: Sequence[ObstacleState] | None = None,
         velocity_aviary_cls: Any | None = None,
         drone_model: Any | None = None,
         physics: Any | None = None,
@@ -44,8 +46,10 @@ class PyBulletVelocityRuntimeEnv:
         self.settings = settings
         self.max_speed = float(max_speed)
         self.enable_obstacles = bool(enable_obstacles)
+        self._swift_obstacles = tuple(swift_obstacles or ())
         self._last_observation: tuple[float, ...] | None = None
         self._obstacle_body_ids: tuple[int, ...] = ()
+        self._swift_obstacle_body_ids: tuple[int, ...] = ()
         aviary_cls, drone_model_value, physics_value = self._resolve_runtime(
             settings=settings,
             velocity_aviary_cls=velocity_aviary_cls,
@@ -68,6 +72,8 @@ class PyBulletVelocityRuntimeEnv:
         options: dict[str, Any] | None = None,
     ) -> tuple[tuple[float, ...], dict[str, Any]]:
         raw_observation, raw_info = self._env.reset(seed=seed, options=options)
+        self._swift_obstacle_body_ids = ()
+        self._obstacle_body_ids = ()
         observation = pybullet_observation_to_swift(raw_observation)
         self._last_observation = observation
         return observation, self._info(raw_info, self._contact_info(observation))
@@ -125,6 +131,7 @@ class PyBulletVelocityRuntimeEnv:
             return {}
         client = client_getter()
         drone_ids = tuple(int(drone_id) for drone_id in drone_getter())
+        self._ensure_swift_obstacles(p, client)
         obstacle_ids = self._obstacle_ids(p, client, drone_ids)
         if not drone_ids or not obstacle_ids:
             return {}
@@ -169,6 +176,9 @@ class PyBulletVelocityRuntimeEnv:
         return info
 
     def _obstacle_ids(self, pybullet_module: Any, client: Any, drone_ids: tuple[int, ...]) -> tuple[int, ...]:
+        if self._swift_obstacle_body_ids:
+            self._obstacle_body_ids = self._swift_obstacle_body_ids
+            return self._swift_obstacle_body_ids
         total_bodies = int(pybullet_module.getNumBodies(physicsClientId=client))
         plane_id = getattr(self._env, "PLANE_ID", None)
         excluded = set(drone_ids)
@@ -177,6 +187,32 @@ class PyBulletVelocityRuntimeEnv:
         obstacle_ids = tuple(body_id for body_id in range(total_bodies) if body_id not in excluded)
         self._obstacle_body_ids = obstacle_ids
         return obstacle_ids
+
+    def _ensure_swift_obstacles(self, pybullet_module: Any, client: Any) -> None:
+        if not self._swift_obstacles or self._swift_obstacle_body_ids:
+            return
+        create_shape = getattr(pybullet_module, "createCollisionShape", None)
+        create_body = getattr(pybullet_module, "createMultiBody", None)
+        if create_shape is None or create_body is None:
+            return
+        body_ids: list[int] = []
+        for obstacle in self._swift_obstacles:
+            try:
+                shape_id = create_shape(
+                    shapeType=getattr(pybullet_module, "GEOM_SPHERE", 2),
+                    radius=float(obstacle.radius),
+                    physicsClientId=client,
+                )
+                body_id = create_body(
+                    baseMass=0.0,
+                    baseCollisionShapeIndex=shape_id,
+                    basePosition=tuple(float(value) for value in obstacle.position),
+                    physicsClientId=client,
+                )
+            except Exception:
+                continue
+            body_ids.append(int(body_id))
+        self._swift_obstacle_body_ids = tuple(body_ids)
 
     @staticmethod
     def _relative_body_position(
