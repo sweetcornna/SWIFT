@@ -19,6 +19,8 @@ def test_training_ablation_script_writes_ranked_report(tmp_path: Path):
             "32",
             "--output",
             str(output),
+            "--evidence-level",
+            "long_training_convergence",
         ],
         cwd=Path(__file__).resolve().parents[1],
         text=True,
@@ -30,5 +32,6 @@ def test_training_ablation_script_writes_ranked_report(tmp_path: Path):
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["record_type"] == "training_ablation_report"
     assert report["readiness"]["all_variants_completed"] is True
+    assert report["readiness"]["evidence_level"] == "long_training_convergence"
     assert report["best_variant"] in {"ppo_mlp", "ppo_hca", "ppo_hca_apf"}
     assert f"SWIFT training ablation written: {output}" in result.stdout

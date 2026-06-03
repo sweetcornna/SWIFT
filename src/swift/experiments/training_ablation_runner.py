@@ -30,6 +30,7 @@ class TrainingAblationConfig:
     output: Path | None = None
     stage: str = "stage4"
     variant: str = "ablation"
+    evidence_level: str = "cpu_smoke_ablation"
 
     def __post_init__(self) -> None:
         if self.total_timesteps is not None and self.total_timesteps <= 0:
@@ -40,13 +41,21 @@ class TrainingAblationConfig:
             object.__setattr__(self, "output", Path(self.output))
         object.__setattr__(self, "stage", str(self.stage).strip() or "stage4")
         object.__setattr__(self, "variant", str(self.variant).strip() or "ablation")
+        object.__setattr__(self, "evidence_level", str(self.evidence_level).strip() or "cpu_smoke_ablation")
 
 
 def run_training_ablation(config: TrainingAblationConfig) -> dict[str, Any]:
     writer = ExperimentArtifactWriter(config.settings.artifact)
     total_timesteps = config.total_timesteps or config.settings.run.total_timesteps
     seed = config.seed if config.seed is not None else config.settings.run.seed
-    config_hash = _config_hash(config.settings, total_timesteps, seed, config.stage, config.variant)
+    config_hash = _config_hash(
+        config.settings,
+        total_timesteps,
+        seed,
+        config.stage,
+        config.variant,
+        config.evidence_level,
+    )
     run_id = build_run_id(
         stage=config.stage,
         variant=config.variant,
@@ -80,7 +89,7 @@ def run_training_ablation(config: TrainingAblationConfig) -> dict[str, Any]:
         "lineage": {
             "config_hash": config_hash,
             "training_goal": "compare_ppo_mlp_hca_hca_apf_smoke_variants",
-            "evidence_level": "cpu_smoke_ablation",
+            "evidence_level": config.evidence_level,
         },
         "total_timesteps": total_timesteps,
         "seed": seed,
@@ -98,7 +107,7 @@ def run_training_ablation(config: TrainingAblationConfig) -> dict[str, Any]:
             "completed_variants": sum(1 for variant in variants if variant["completed"]),
             "required_variants": len(REQUIRED_ABLATION_VARIANTS),
             "convergence_claim": False,
-            "evidence_level": "cpu_smoke_ablation",
+            "evidence_level": config.evidence_level,
         },
         "artifacts": {
             "summary_json": str(output_path),
@@ -235,6 +244,13 @@ def _finite_metric(metrics: dict[str, Any], name: str) -> float:
     return value
 
 
-def _config_hash(settings: TrainingSettings, total_timesteps: int, seed: int, stage: str, variant: str) -> str:
-    material = repr((settings, total_timesteps, seed, stage, variant)).encode("utf-8")
+def _config_hash(
+    settings: TrainingSettings,
+    total_timesteps: int,
+    seed: int,
+    stage: str,
+    variant: str,
+    evidence_level: str,
+) -> str:
+    material = repr((settings, total_timesteps, seed, stage, variant, evidence_level)).encode("utf-8")
     return hashlib.sha256(material).hexdigest()

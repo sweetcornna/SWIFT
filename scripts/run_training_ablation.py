@@ -21,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=ROOT / "configs" / "training.yaml")
     parser.add_argument("--total-timesteps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--evidence-level", default="cpu_smoke_ablation")
     parser.add_argument(
         "--output",
         type=Path,
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             total_timesteps=args.total_timesteps,
             seed=args.seed,
             output=args.output,
+            evidence_level=args.evidence_level,
         )
     )
     print(f"SWIFT training ablation written: {args.output}")

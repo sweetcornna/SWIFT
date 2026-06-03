@@ -119,3 +119,20 @@ def test_score_ablation_metrics_rewards_success_and_penalizes_collisions():
 def test_training_ablation_rejects_non_positive_total_timesteps(tmp_path: Path):
     with pytest.raises(ValueError, match="total_timesteps"):
         TrainingAblationConfig(settings=_settings(tmp_path), total_timesteps=0)
+
+
+def test_training_ablation_can_mark_long_training_evidence_level(tmp_path: Path):
+    output = tmp_path / "long_ablation.json"
+
+    report = run_training_ablation(
+        TrainingAblationConfig(
+            settings=_settings(tmp_path),
+            total_timesteps=32,
+            output=output,
+            evidence_level="long_training_convergence",
+        )
+    )
+
+    assert report["lineage"]["evidence_level"] == "long_training_convergence"
+    assert report["readiness"]["evidence_level"] == "long_training_convergence"
+    assert report["readiness"]["convergence_claim"] is False
