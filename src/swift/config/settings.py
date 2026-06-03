@@ -140,6 +140,7 @@ class ConvergenceGateProfile:
     min_success_rate: float = 0.95
     max_collision_rate: float = 0.0
     max_timeout_rate: float = 0.05
+    min_seed_count: int = 1
     min_total_timesteps: int = 4096
     min_episodes_completed: int = 10
 
@@ -174,6 +175,10 @@ class ConvergenceGateProfile:
             max_timeout_rate=_unit_interval_float(
                 "max_timeout_rate",
                 mapping.get("max_timeout_rate", defaults.max_timeout_rate),
+            ),
+            min_seed_count=_positive_int(
+                "min_seed_count",
+                mapping.get("min_seed_count", defaults.min_seed_count),
             ),
             min_total_timesteps=_positive_int(
                 "min_total_timesteps",

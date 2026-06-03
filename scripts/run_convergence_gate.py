@@ -25,11 +25,17 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=ROOT / "outputs" / "training" / "convergence_gate.json",
     )
-    parser.add_argument("--config", type=Path, help="Evaluation settings YAML with convergence gate profiles.")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=ROOT / "configs" / "evaluation.yaml",
+        help="Evaluation settings YAML with convergence gate profiles.",
+    )
     parser.add_argument("--profile", help="Convergence gate profile name from the evaluation settings YAML.")
     parser.add_argument("--min-success-rate", type=float)
     parser.add_argument("--max-collision-rate", type=float)
     parser.add_argument("--max-timeout-rate", type=float)
+    parser.add_argument("--min-seed-count", type=int)
     parser.add_argument("--min-total-timesteps", type=int)
     parser.add_argument("--min-episodes-completed", type=int)
     parser.add_argument("--required-evidence-level")
@@ -68,6 +74,9 @@ def _thresholds_from_args(args: argparse.Namespace) -> ConvergenceThresholds:
         if args.max_collision_rate is not None
         else profile.max_collision_rate,
         max_timeout_rate=args.max_timeout_rate if args.max_timeout_rate is not None else profile.max_timeout_rate,
+        min_seed_count=args.min_seed_count
+        if args.min_seed_count is not None
+        else profile.min_seed_count,
         min_total_timesteps=args.min_total_timesteps
         if args.min_total_timesteps is not None
         else profile.min_total_timesteps,
@@ -82,10 +91,8 @@ def _thresholds_from_args(args: argparse.Namespace) -> ConvergenceThresholds:
 
 
 def _profile_from_args(args: argparse.Namespace) -> ConvergenceGateProfile:
-    if args.profile or args.config:
-        settings = load_evaluation_settings(args.config or ROOT / "configs" / "evaluation.yaml")
-        return settings.convergence_profile(args.profile)
-    return ConvergenceGateProfile()
+    settings = load_evaluation_settings(args.config)
+    return settings.convergence_profile(args.profile)
 
 
 if __name__ == "__main__":

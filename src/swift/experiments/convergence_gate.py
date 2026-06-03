@@ -28,6 +28,7 @@ class ConvergenceThresholds:
     min_success_rate: float = 0.95
     max_collision_rate: float = 0.0
     max_timeout_rate: float = 0.05
+    min_seed_count: int = 1
     min_total_timesteps: int = 4096
     min_episodes_completed: int = 10
     required_evidence_level: str = "long_training_convergence"
@@ -39,8 +40,11 @@ class ConvergenceThresholds:
         _unit_interval("max_timeout_rate", self.max_timeout_rate)
         if self.min_total_timesteps <= 0:
             raise ValueError("min_total_timesteps must be positive")
+        if self.min_seed_count <= 0:
+            raise ValueError("min_seed_count must be positive")
         if self.min_episodes_completed <= 0:
             raise ValueError("min_episodes_completed must be positive")
+        object.__setattr__(self, "min_seed_count", int(self.min_seed_count))
         object.__setattr__(self, "min_total_timesteps", int(self.min_total_timesteps))
         object.__setattr__(self, "min_episodes_completed", int(self.min_episodes_completed))
         required_evidence_level = str(self.required_evidence_level).strip() or "long_training_convergence"
@@ -152,6 +156,8 @@ def _load_source_report(path: Path) -> dict[str, Any]:
 def _best_candidate(source: dict[str, Any]) -> dict[str, Any]:
     variants = source.get("variants")
     best_variant = source.get("best_variant")
+    if source.get("record_type") == "multi_scenario_evaluation_report":
+        return _multi_scenario_candidate(source)
     if isinstance(variants, list) and best_variant is not None:
         for variant in variants:
             if isinstance(variant, dict) and variant.get("variant") == best_variant:
@@ -170,6 +176,31 @@ def _best_candidate(source: dict[str, Any]) -> dict[str, Any]:
     raise ValueError("input report must contain variants or metrics/training")
 
 
+def _multi_scenario_candidate(source: dict[str, Any]) -> dict[str, Any]:
+    ranking = source.get("ranking")
+    if not isinstance(ranking, list) or not ranking or not isinstance(ranking[0], dict):
+        raise ValueError("multi-scenario report must contain a ranking candidate")
+    ranked_candidate = ranking[0]
+    ranked_metrics = dict(ranked_candidate.get("metrics", {}))
+    average_path_length = float(ranked_metrics.get("average_path_length", 0.0))
+    return _candidate_record(
+        {
+            "variant": source.get("variant", "multi_scenario_policy_tuning"),
+            "metrics": {
+                "success_rate": ranked_metrics.get("success_rate", 0.0),
+                "collision_rate": ranked_metrics.get("collision_rate", 1.0),
+                "timeout_rate": ranked_metrics.get("timeout_rate", 1.0),
+                "average_episode_return": -average_path_length,
+            },
+            "training": {
+                "total_timesteps": _multi_scenario_total_steps(source),
+                "updates": 0,
+                "episodes_completed": _multi_scenario_episode_count(source),
+            },
+        }
+    )
+
+
 def _candidate_record(candidate: dict[str, Any]) -> dict[str, Any]:
     metrics = dict(candidate.get("metrics", {}))
     training = dict(candidate.get("training", {}))
@@ -178,11 +209,15 @@ def _candidate_record(candidate: dict[str, Any]) -> dict[str, Any]:
     for key in ("total_timesteps", "updates", "episodes_completed"):
         if int(training.get(key, 0)) < 0:
             raise ValueError(f"{key} must be non-negative")
-    return {
+    record = {
         "variant": str(candidate.get("variant", "unknown")),
         "metrics": metrics,
         "training": training,
     }
+    seed_metrics = candidate.get("seed_metrics")
+    if isinstance(seed_metrics, list):
+        record["seed_metrics"] = seed_metrics
+    return record
 
 
 def _gates(
@@ -195,6 +230,7 @@ def _gates(
     evidence_level = _evidence_level(source)
     evidence_levels = _evidence_level_values(source)
     completed_variants = _completed_variants(source)
+    seed_count = _seed_count(source)
     return [
         _gate(
             "convergence_claim_allowed",
@@ -216,6 +252,12 @@ def _gates(
             all(variant in completed_variants for variant in thresholds.required_variants),
         ),
         _gate(
+            "seed_count",
+            seed_count,
+            f">={thresholds.min_seed_count}",
+            seed_count >= thresholds.min_seed_count,
+        ),
+        _gate(
             "success_rate",
             _finite_metric(metrics, "success_rate"),
             f">={thresholds.min_success_rate}",
@@ -235,20 +277,25 @@ def _gates(
         ),
         _gate(
             "total_timesteps",
-            int(training.get("total_timesteps", 0)),
+            _training_minimum(candidate, "total_timesteps"),
             f">={thresholds.min_total_timesteps}",
-            int(training.get("total_timesteps", 0)) >= thresholds.min_total_timesteps,
+            _training_minimum(candidate, "total_timesteps") >= thresholds.min_total_timesteps,
         ),
         _gate(
             "episodes_completed",
-            int(training.get("episodes_completed", 0)),
+            _training_minimum(candidate, "episodes_completed"),
             f">={thresholds.min_episodes_completed}",
-            int(training.get("episodes_completed", 0)) >= thresholds.min_episodes_completed,
+            _training_minimum(candidate, "episodes_completed") >= thresholds.min_episodes_completed,
         ),
     ]
 
 
 def _completed_variants(source: dict[str, Any]) -> list[str]:
+    if source.get("record_type") == "multi_scenario_evaluation_report":
+        readiness = source.get("readiness", {})
+        if isinstance(readiness, dict) and readiness.get("all_scenarios_evaluated") is True:
+            return [str(source.get("variant", "multi_scenario_policy_tuning"))]
+        return []
     variants = source.get("variants", [])
     if not isinstance(variants, list):
         return []
@@ -259,6 +306,56 @@ def _completed_variants(source: dict[str, Any]) -> list[str]:
         if variant.get("completed") is True:
             completed.append(str(variant.get("variant", "")))
     return sorted(name for name in completed if name)
+
+
+def _multi_scenario_total_steps(source: dict[str, Any]) -> int:
+    return sum(_scenario_steps(scenario) for scenario in _multi_scenario_records(source))
+
+
+def _multi_scenario_episode_count(source: dict[str, Any]) -> int:
+    scenarios = _multi_scenario_records(source)
+    return len(scenarios)
+
+
+def _multi_scenario_records(source: dict[str, Any]) -> list[dict[str, Any]]:
+    scenarios = source.get("scenarios", [])
+    if not isinstance(scenarios, list):
+        return []
+    return [scenario for scenario in scenarios if isinstance(scenario, dict)]
+
+
+def _scenario_steps(scenario: dict[str, Any]) -> int:
+    metrics = scenario.get("metrics")
+    if isinstance(metrics, dict):
+        return int(metrics.get("steps", 0))
+    return 0
+
+
+def _seed_count(source: dict[str, Any]) -> int:
+    value = source.get("seed_count")
+    if value is not None:
+        return max(0, int(value))
+    seeds = source.get("seeds")
+    if isinstance(seeds, list):
+        return len({int(seed) for seed in seeds})
+    if "seed" in source:
+        return 1
+    return 1
+
+
+def _training_minimum(candidate: dict[str, Any], key: str) -> int:
+    seed_metrics = candidate.get("seed_metrics")
+    if isinstance(seed_metrics, list) and seed_metrics:
+        values = []
+        for seed_metric in seed_metrics:
+            if not isinstance(seed_metric, dict):
+                continue
+            training = seed_metric.get("training")
+            if isinstance(training, dict):
+                values.append(int(training.get(key, 0)))
+        if values:
+            return min(values)
+    return int(candidate["training"].get(key, 0))
 
 
 def _gate(name: str, actual: Any, expected: Any, passed: bool) -> dict[str, Any]:

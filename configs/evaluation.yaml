@@ -22,6 +22,7 @@ convergence_gate:
       min_success_rate: 0.0
       max_collision_rate: 1.0
       max_timeout_rate: 1.0
+      min_seed_count: 1
       min_total_timesteps: 64
       min_episodes_completed: 1
     deterministic_multi_scenario_tuning:
@@ -32,6 +33,7 @@ convergence_gate:
       min_success_rate: 0.95
       max_collision_rate: 0.0
       max_timeout_rate: 0.05
+      min_seed_count: 1
       min_total_timesteps: 4096
       min_episodes_completed: 10
     long_training_convergence:
@@ -44,5 +46,6 @@ convergence_gate:
       min_success_rate: 0.95
       max_collision_rate: 0.0
       max_timeout_rate: 0.05
+      min_seed_count: 3
       min_total_timesteps: 100000
       min_episodes_completed: 100

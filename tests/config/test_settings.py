@@ -138,6 +138,7 @@ def test_load_evaluation_settings_parses_convergence_gate_profiles(tmp_path):
                 "      min_success_rate: 0.95",
                 "      max_collision_rate: 0.0",
                 "      max_timeout_rate: 0.05",
+                "      min_seed_count: 3",
                 "      min_total_timesteps: 100000",
                 "      min_episodes_completed: 100",
             ]
@@ -160,6 +161,7 @@ def test_load_evaluation_settings_parses_convergence_gate_profiles(tmp_path):
                 min_success_rate=0.95,
                 max_collision_rate=0.0,
                 max_timeout_rate=0.05,
+                min_seed_count=3,
                 min_total_timesteps=100000,
                 min_episodes_completed=100,
             )
@@ -188,6 +190,7 @@ def test_current_evaluation_config_declares_enterprise_convergence_profile():
     assert profile.min_success_rate == pytest.approx(0.95)
     assert profile.max_collision_rate == pytest.approx(0.0)
     assert profile.max_timeout_rate == pytest.approx(0.05)
+    assert profile.min_seed_count >= 3
     assert profile.min_total_timesteps >= 100000
     assert profile.min_episodes_completed >= 100
 
