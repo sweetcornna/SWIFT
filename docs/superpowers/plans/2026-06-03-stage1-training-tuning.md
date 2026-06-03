@@ -27,6 +27,7 @@
 - [x] Persist strict update-history JSONL and a checkpoint containing model, optimizer, and RNG state.
 - [x] Load checkpoints back into an MLP actor-critic and evaluate them deterministically.
 - [x] Add deterministic APF feature generation from the existing 15D observation contract.
+- [x] Add Torch-lazy PPO+HCA actor-critic smoke training with history and checkpoint artifacts.
 - [x] Verify: `python -m pytest tests\rl\test_ppo_optional.py tests\rl\test_torch_ppo.py -q`.
 
 ## Task 2: Artifact Writer And Evaluation Metrics
@@ -84,6 +85,7 @@
 - [x] `python scripts\run_pybullet_smoke.py --check-only`
 - [x] `python scripts\run_pybullet_runtime_smoke.py --steps 1`
 - [x] `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json`
+- [x] `python scripts\run_ppo_hca_smoke.py --total-timesteps 64 --output outputs\training\ppo_hca_smoke.json`
 - [x] `python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json`
 - [x] `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json`
 - [x] `python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json`

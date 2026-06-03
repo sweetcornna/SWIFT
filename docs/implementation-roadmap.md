@@ -32,6 +32,9 @@ combined Stage 1 training/tuning report.
 
 Replace flat MLP perception with target and threat attention layers. Preserve
 the PPO baseline as the comparison target.
+The current Stage 2 slice adds a Torch-lazy HCA observation adapter, target and
+threat attention feature extractor, HCA actor-critic, and a CPU PPO+HCA smoke
+runner with JSON history and checkpoint artifacts.
 
 ## Stage 3: HCA+APF Fusion
 

@@ -29,6 +29,7 @@ python scripts\run_baseline_demo.py --episodes 3 --output outputs\baseline\basel
 ```powershell
 python -m pip install -e ".[dev,train]"
 python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json
+python scripts\run_ppo_hca_smoke.py --total-timesteps 64 --output outputs\training\ppo_hca_smoke.json
 python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json
 python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json
 ```
@@ -44,6 +45,8 @@ python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episo
 
 APF feature generation is available through `swift.rl.apf_features_from_observation(...)`
 as a 9D attraction/repulsion/combined-force vector for later HCA+APF fusion.
+PPO+HCA smoke training is available through `scripts\run_ppo_hca_smoke.py` and
+uses a Torch-lazy HCA actor-critic over the same 15D observation contract.
 
 ## Repository Boundary
 

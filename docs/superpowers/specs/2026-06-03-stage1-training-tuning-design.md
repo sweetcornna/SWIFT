@@ -76,6 +76,13 @@ vendored `VelocityAviary`. `scripts/run_pybullet_runtime_smoke.py` tries direct
 imports first and falls back to Pixi, producing one-step headless runtime
 evidence with SWIFT's 15D observation shape.
 
+### HCA Smoke Path
+
+`src/swift/rl/torch_hca_ppo.py` adds a Torch-only HCA observation adapter,
+target attention layer, threat attention layer, actor-critic, and tiny CPU
+PPO+HCA smoke trainer. `scripts/run_ppo_hca_smoke.py` exposes the smoke path and
+writes strict JSON history plus a `ppo_hca_checkpoint`.
+
 ## Acceptance Gates
 
 - `python -m pytest` passes.
@@ -83,6 +90,7 @@ evidence with SWIFT's 15D observation shape.
 - `python scripts\run_pybullet_smoke.py --check-only` passes.
 - `python scripts\run_pybullet_runtime_smoke.py --steps 1` exits 0 or reports a clear optional-runtime unavailability reason.
 - `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json` exits 0 and writes finite metrics.
+- `python scripts\run_ppo_hca_smoke.py --total-timesteps 64 --output outputs\training\ppo_hca_smoke.json` exits 0 and writes finite metrics.
 - `python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json` exits 0 for the checkpoint path recorded in the PPO summary.
 - `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json` exits 0 and reports collision-to-success improvement.
 - `python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json` exits 0 and reports collision-to-success readiness.
@@ -90,6 +98,6 @@ evidence with SWIFT's 15D observation shape.
 
 ## Deferred Work
 
-This slice does not train in PyBullet, does not add HCA/APF networks, and does
-not claim final research convergence. It establishes the repeatable training
-and tuning infrastructure needed for those later phases.
+This slice does not train in PyBullet and does not claim final research
+convergence. HCA and APF additions are smoke-level, contract-level foundations
+for later ablation training rather than final model performance claims.

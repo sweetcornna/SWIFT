@@ -7,6 +7,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+from swift.rl.hca import HCAActorCriticConfig
+
 
 class TorchUnavailableError(RuntimeError):
     """Raised when the optional Torch PPO backend cannot be imported."""
@@ -99,6 +101,49 @@ class PPOTrainingConfig(PPOConfig):
 
 
 @dataclass(frozen=True)
+class HCAPPOTrainingConfig(PPOConfig):
+    total_timesteps: int = 128
+    rollout_steps: int = 32
+    minibatch_size: int = 16
+    update_epochs: int = 1
+    learning_rate: float = 3e-4
+    seed: int = 0
+    torch_num_threads: int = 1
+    network: HCAActorCriticConfig = field(default_factory=HCAActorCriticConfig)
+    checkpoint_path: Path | None = None
+    history_path: Path | None = None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        _set_positive_int(self, "total_timesteps", self.total_timesteps)
+        _set_positive_float(self, "learning_rate", self.learning_rate)
+        _set_non_negative_int(self, "seed", self.seed)
+        _set_positive_int(self, "torch_num_threads", self.torch_num_threads)
+        if self.total_timesteps < self.rollout_steps:
+            raise ValueError("total_timesteps must be >= rollout_steps")
+        if not isinstance(self.network, HCAActorCriticConfig):
+            try:
+                network = HCAActorCriticConfig(
+                    observation=self.network.observation,
+                    action_dim=self.network.action_dim,
+                    embedding_dim=self.network.embedding_dim,
+                    target_attention_heads=self.network.target_attention_heads,
+                    threat_attention_heads=self.network.threat_attention_heads,
+                    hidden_sizes=self.network.hidden_sizes,
+                    dropout=self.network.dropout,
+                    max_heading_delta=self.network.max_heading_delta,
+                    log_std_init=self.network.log_std_init,
+                )
+            except AttributeError as exc:
+                raise TypeError("network must be an HCAActorCriticConfig") from exc
+            object.__setattr__(self, "network", network)
+        if self.checkpoint_path is not None:
+            object.__setattr__(self, "checkpoint_path", Path(self.checkpoint_path))
+        if self.history_path is not None:
+            object.__setattr__(self, "history_path", Path(self.history_path))
+
+
+@dataclass(frozen=True)
 class PPOTrainingResult:
     total_timesteps: int
     updates: int
@@ -128,6 +173,22 @@ def train_ppo_mlp(
             ) from exc
         raise
     return backend.train_ppo_mlp(make_env, training_config)
+
+
+def train_ppo_hca(
+    make_env: Callable[[], Any],
+    config: HCAPPOTrainingConfig | None = None,
+) -> PPOTrainingResult:
+    training_config = config or HCAPPOTrainingConfig()
+    try:
+        backend = import_module(".torch_hca_ppo", __package__)
+    except ModuleNotFoundError as exc:
+        if exc.name == "torch" or (exc.name is not None and exc.name.startswith("torch.")):
+            raise TorchUnavailableError(
+                "torch is required for train_ppo_hca; install the train extra"
+            ) from exc
+        raise
+    return backend.train_ppo_hca(make_env, training_config)
 
 
 def _set_exact_int(instance: object, name: str, value: int, expected: int) -> None:

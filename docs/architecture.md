@@ -17,7 +17,7 @@ simulation substrate.
 4. Environment contract layer: Gymnasium-style boundaries for later runtime
    implementation.
 5. RL layer: PPO, HCA, and APF configuration contracts plus optional Torch PPO
-   training implementation loaded lazily.
+   MLP and PPO+HCA smoke implementations loaded lazily.
 6. Experiment layer: ablation variants, metric naming, strict JSON artifacts,
    update-history JSONL, checkpoints, training smoke runners, deterministic
    checkpoint evaluation, tuning reports, and Stage 1 evidence aggregation.
