@@ -15,6 +15,8 @@ a successful route.
 - Torch and NumPy are optional training extras, not base runtime dependencies.
 - Public imports from `swift.rl` must not import Torch eagerly.
 - Training smoke proves finite updates and artifacts, not final convergence.
+- PyBullet runtime smoke is optional and may use the local Pixi environment when
+  the active SWIFT Python lacks a compatible `pybullet` wheel.
 
 ## Components
 
@@ -60,11 +62,19 @@ full tuning report.
 JSON into a strict Stage 1 evidence report. `scripts/run_stage1_report.py`
 exposes this as a CLI.
 
+### PyBullet Runtime Smoke
+
+`src/swift/sim/pybullet_runtime.py` adds a narrow optional wrapper around the
+vendored `VelocityAviary`. `scripts/run_pybullet_runtime_smoke.py` tries direct
+imports first and falls back to Pixi, producing one-step headless runtime
+evidence with SWIFT's 15D observation shape.
+
 ## Acceptance Gates
 
 - `python -m pytest` passes.
 - `python scripts\swift_healthcheck.py` passes.
 - `python scripts\run_pybullet_smoke.py --check-only` passes.
+- `python scripts\run_pybullet_runtime_smoke.py --steps 1` exits 0 or reports a clear optional-runtime unavailability reason.
 - `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json` exits 0 and writes finite metrics.
 - `python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json` exits 0 for the checkpoint path recorded in the PPO summary.
 - `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json` exits 0 and reports collision-to-success improvement.

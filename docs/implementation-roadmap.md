@@ -14,7 +14,9 @@ demonstrable baseline.
 Stage 1 is repo-native first: the baseline smoke exercises SWIFT-owned
 environment, policy, and experiment contracts before training is coupled to any
 external simulator internals. `D:\project\pybullet` remains command-level
-substrate smoke until the environment adapter stabilizes.
+substrate smoke until the environment adapter stabilizes. A first optional
+runtime smoke adapter now wraps the local vendored `VelocityAviary` headlessly
+and maps its raw 20D drone state into SWIFT's 15D observation shape.
 
 The current Stage 1 training slice adds an optional Torch CPU PPO smoke and a
 deterministic tuning grid. PPO smoke verifies the train/update/artifact loop;

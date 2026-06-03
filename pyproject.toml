@@ -20,6 +20,11 @@ train = [
   "numpy>=2.4,<3",
   "torch>=2.12,<3",
 ]
+sim = [
+  "gymnasium>=1.2,<2",
+  "numpy>=2.4,<3",
+  "pybullet>=3.2,<4; python_version < '3.14'",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

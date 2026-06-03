@@ -81,6 +81,7 @@
 - [x] `python -m pytest`
 - [x] `python scripts\swift_healthcheck.py`
 - [x] `python scripts\run_pybullet_smoke.py --check-only`
+- [x] `python scripts\run_pybullet_runtime_smoke.py --steps 1`
 - [x] `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json`
 - [x] `python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json`
 - [x] `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json`

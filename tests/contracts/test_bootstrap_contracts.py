@@ -1,3 +1,6 @@
+from pathlib import Path
+import tomllib
+
 import pytest
 
 from swift.envs import (
@@ -44,3 +47,13 @@ def test_experiment_spec_names_ablation_variants():
     )
 
     assert spec.variants == ("mlp_ppo", "hca_ppo", "hca_apf_ppo")
+
+
+def test_pyproject_declares_sim_extra_for_optional_pybullet_runtime():
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    sim_extra = pyproject["project"]["optional-dependencies"]["sim"]
+
+    assert any(dependency.startswith("gymnasium") for dependency in sim_extra)
+    assert any(dependency.startswith("pybullet") for dependency in sim_extra)
+    assert any(dependency.startswith("numpy") for dependency in sim_extra)

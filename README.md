@@ -15,6 +15,7 @@ python -m pip install -e ".[dev]"
 python -m pytest
 python scripts\swift_healthcheck.py
 python scripts\run_pybullet_smoke.py --check-only
+python scripts\run_pybullet_runtime_smoke.py --steps 1
 ```
 
 ### Stage 1 Baseline Smoke
@@ -47,3 +48,6 @@ python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episo
 - `D:\project\pybullet` owns the existing Pixi-managed PyBullet demos.
 - The first integration uses command-level health checks instead of importing
   PyBullet internals directly.
+- The optional runtime adapter wraps the local vendored `VelocityAviary` in
+  headless mode. On Python versions without a ready `pybullet` wheel, the
+  runtime smoke falls back to the PyBullet Pixi environment.

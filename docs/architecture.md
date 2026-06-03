@@ -11,7 +11,8 @@ simulation substrate.
 1. Configuration layer: YAML files define project, simulation, training, and
    evaluation settings.
 2. Simulation adapter layer: `PyBulletBackend` validates the local substrate and
-   constructs Pixi task commands.
+   constructs Pixi task commands. `PyBulletVelocityRuntimeEnv` is an optional
+   headless runtime adapter for the vendored `VelocityAviary`.
 3. Core domain layer: drone states, actions, obstacles, rewards, and metrics.
 4. Environment contract layer: Gymnasium-style boundaries for later runtime
    implementation.
@@ -32,3 +33,8 @@ The current PyBullet adapter is a command adapter: it validates the external
 substrate and builds Pixi task commands for smoke checks. The future environment
 adapter will translate SWIFT environment contracts into simulator reset, step,
 and observation calls after the Stage 1 repo-native baseline is stable.
+
+The first runtime adapter is deliberately narrow. It uses one drone, `gui=False`,
+`record=False`, `user_debug_gui=False`, and maps PyBullet's 20D drone state into
+SWIFT's 15D observation contract for runtime smoke evidence. It does not yet own
+the final training reward or obstacle semantics.
