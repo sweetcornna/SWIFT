@@ -36,13 +36,16 @@ class PyBulletVelocityRuntimeEnv:
         settings: SimulationSettings,
         *,
         max_speed: float = 1.0,
+        enable_obstacles: bool = False,
         velocity_aviary_cls: Any | None = None,
         drone_model: Any | None = None,
         physics: Any | None = None,
     ) -> None:
         self.settings = settings
         self.max_speed = float(max_speed)
+        self.enable_obstacles = bool(enable_obstacles)
         self._last_observation: tuple[float, ...] | None = None
+        self._obstacle_body_ids: tuple[int, ...] = ()
         aviary_cls, drone_model_value, physics_value = self._resolve_runtime(
             settings=settings,
             velocity_aviary_cls=velocity_aviary_cls,
@@ -55,7 +58,7 @@ class PyBulletVelocityRuntimeEnv:
             physics=physics_value.PYB,
             gui=False,
             record=False,
-            obstacles=False,
+            obstacles=self.enable_obstacles,
             user_debug_gui=False,
         )
 
@@ -67,14 +70,17 @@ class PyBulletVelocityRuntimeEnv:
         raw_observation, raw_info = self._env.reset(seed=seed, options=options)
         observation = pybullet_observation_to_swift(raw_observation)
         self._last_observation = observation
-        return observation, self._info(raw_info)
+        return observation, self._info(raw_info, self._contact_info(observation))
 
     def step(self, action: DroneAction) -> tuple[tuple[float, ...], float, bool, bool, dict[str, Any]]:
         command = drone_action_to_velocity_command(action, self.max_speed)
         raw_observation, reward, terminated, truncated, raw_info = self._env.step(_action_array(command))
         observation = pybullet_observation_to_swift(raw_observation)
         self._last_observation = observation
-        return observation, float(reward), bool(terminated), bool(truncated), self._info(raw_info)
+        return observation, float(reward), bool(terminated), bool(truncated), self._info(
+            raw_info,
+            self._contact_info(observation),
+        )
 
     def close(self) -> None:
         close = getattr(self._env, "close", None)
@@ -105,12 +111,112 @@ class PyBulletVelocityRuntimeEnv:
             raise PyBulletRuntimeUnavailableError(f"PyBullet runtime imports failed: {exc}") from exc
         return VelocityAviary, DroneModel, Physics
 
+    def _contact_info(self, observation: tuple[float, ...]) -> dict[str, Any]:
+        if not self.enable_obstacles:
+            return {}
+        try:
+            import pybullet as p
+        except ImportError:
+            return {}
+
+        client_getter = getattr(self._env, "getPyBulletClient", None)
+        drone_getter = getattr(self._env, "getDroneIds", None)
+        if client_getter is None or drone_getter is None:
+            return {}
+        client = client_getter()
+        drone_ids = tuple(int(drone_id) for drone_id in drone_getter())
+        obstacle_ids = self._obstacle_ids(p, client, drone_ids)
+        if not drone_ids or not obstacle_ids:
+            return {}
+
+        contacts = []
+        closest_distances: list[tuple[float, int]] = []
+        for drone_id in drone_ids:
+            for obstacle_id in obstacle_ids:
+                contacts.extend(
+                    p.getContactPoints(bodyA=drone_id, bodyB=obstacle_id, physicsClientId=client)
+                )
+                for point in p.getClosestPoints(
+                    bodyA=drone_id,
+                    bodyB=obstacle_id,
+                    distance=1_000_000.0,
+                    physicsClientId=client,
+                ):
+                    closest_distances.append((float(point[8]), obstacle_id))
+
+        nearest_distance = None
+        nearest_obstacle_id = None
+        if closest_distances:
+            nearest_distance, nearest_obstacle_id = min(closest_distances, key=lambda item: item[0])
+        elif contacts:
+            nearest_distance = min(float(point[8]) for point in contacts)
+            nearest_obstacle_id = int(contacts[0][2])
+
+        info: dict[str, Any] = {
+            "contact_count": len(contacts),
+            "collided": bool(contacts),
+        }
+        if nearest_distance is not None:
+            info["minimum_safety_distance"] = float(nearest_distance)
+        if nearest_obstacle_id is not None:
+            info["nearest_obstacle_body_id"] = int(nearest_obstacle_id)
+            relative = self._relative_body_position(p, client, nearest_obstacle_id, observation[0:3])
+            if relative is not None:
+                info["nearest_obstacle_relative"] = relative
+        return info
+
+    def _obstacle_ids(self, pybullet_module: Any, client: Any, drone_ids: tuple[int, ...]) -> tuple[int, ...]:
+        total_bodies = int(pybullet_module.getNumBodies(physicsClientId=client))
+        plane_id = getattr(self._env, "PLANE_ID", None)
+        excluded = set(drone_ids)
+        if plane_id is not None:
+            excluded.add(int(plane_id))
+        obstacle_ids = tuple(body_id for body_id in range(total_bodies) if body_id not in excluded)
+        self._obstacle_body_ids = obstacle_ids
+        return obstacle_ids
+
     @staticmethod
-    def _info(raw_info: Any) -> dict[str, Any]:
-        return {
+    def _relative_body_position(
+        pybullet_module: Any,
+        client: Any,
+        body_id: int,
+        drone_position: tuple[float, ...],
+    ) -> tuple[float, float, float] | None:
+        getter = getattr(pybullet_module, "getBasePositionAndOrientation", None)
+        if getter is None:
+            return None
+        position, _ = getter(bodyUniqueId=int(body_id), physicsClientId=client)
+        if position is None or len(position) != 3:
+            return None
+        return tuple(float(position[index]) - float(drone_position[index]) for index in range(3))
+
+    @staticmethod
+    def _info(raw_info: Any, runtime_info: dict[str, Any] | None = None) -> dict[str, Any]:
+        raw = raw_info if isinstance(raw_info, dict) else {"value": raw_info}
+        info: dict[str, Any] = {
             "backend": "pybullet_velocity_aviary",
             "runtime_contract": "smoke",
-            "raw_info": raw_info if isinstance(raw_info, dict) else {"value": raw_info},
+            "raw_info": raw,
+        }
+        for source_key, target_key in (
+            ("collided", "collided"),
+            ("collision", "collided"),
+            ("timed_out", "timed_out"),
+            ("minimum_safety_distance", "minimum_safety_distance"),
+            ("nearest_obstacle_radius", "nearest_obstacle_radius"),
+            ("obstacle_radius", "nearest_obstacle_radius"),
+        ):
+            if source_key in raw:
+                info[target_key] = raw[source_key]
+        for source_key in ("nearest_obstacle_relative", "relative_obstacle", "obstacle_relative"):
+            if source_key in raw:
+                info["nearest_obstacle_relative"] = raw[source_key]
+                break
+        info.update(runtime_info or {})
+        return {
+            **info,
+            "collided": bool(info.get("collided", False)),
+            "timed_out": bool(info.get("timed_out", False)),
         }
 
 

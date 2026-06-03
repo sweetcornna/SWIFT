@@ -1,10 +1,12 @@
+import math
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 
 from swift.config import SimulationSettings
-from swift.core import DroneAction
+from swift.core import DroneAction, ObstacleState
 from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceSettings
 from swift.sim.pybullet_runtime import (
     PyBulletRuntimeUnavailableError,
@@ -75,6 +77,54 @@ def test_runtime_env_wraps_velocity_aviary_contract(tmp_path: Path):
     assert fake_env.closed is True
 
 
+def test_runtime_env_can_enable_pybullet_obstacles(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    captured_kwargs = {}
+
+    def aviary_factory(**kwargs):
+        captured_kwargs["kwargs"] = kwargs
+        return FakeVelocityAviary()
+
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        enable_obstacles=True,
+        velocity_aviary_cls=aviary_factory,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+    runtime.close()
+
+    assert captured_kwargs["kwargs"]["obstacles"] is True
+
+
+def test_runtime_env_detects_headless_pybullet_contacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletContacts()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        enable_obstacles=True,
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    _, reset_info = runtime.reset(seed=29)
+    _, _, _, _, step_info = runtime.step(DroneAction(speed=0.0, heading_delta=0.0, climb_rate=0.0))
+    runtime.close()
+
+    assert reset_info["contact_count"] == 1
+    assert reset_info["collided"] is True
+    assert reset_info["minimum_safety_distance"] == pytest.approx(-0.025)
+    assert reset_info["nearest_obstacle_body_id"] == 2
+    assert step_info["contact_count"] == 1
+    assert step_info["collided"] is True
+    assert step_info["minimum_safety_distance"] == pytest.approx(-0.025)
+
+
 def test_pybullet_training_env_exposes_ppo_contract_with_fake_aviary(tmp_path: Path):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
@@ -101,6 +151,7 @@ def test_pybullet_training_env_exposes_ppo_contract_with_fake_aviary(tmp_path: P
     assert len(step_two[0]) == 15
     assert info["backend"] == "pybullet_velocity_aviary"
     assert step_one[3] is False
+    assert step_one[4]["runtime_contract"] == "pybullet_velocity_training_compatibility"
     assert step_one[4]["timed_out"] is False
     assert step_two[2] is False
     assert step_two[3] is True
@@ -148,6 +199,117 @@ def test_pybullet_training_env_adds_goal_tail_reward_and_episode_metrics(tmp_pat
     assert step_info["raw_reward"] == -999.0
 
 
+def test_pybullet_training_env_propagates_runtime_collision_and_obstacle_metrics(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_env = FakeCollisionVelocityAviary()
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(10.0, 0.0, 0.0),
+        goal_radius=0.2,
+        max_steps=4,
+        max_speed=1.0,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        velocity_aviary_cls=lambda **_: fake_env,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, _ = training_env.reset(seed=17)
+    next_observation, reward, terminated, truncated, step_info = training_env.step(
+        DroneAction(speed=1.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert observation[13] == pytest.approx(0.0)
+    assert next_observation[10:13] == pytest.approx((0.0, 0.0, 0.0))
+    assert next_observation[13] == pytest.approx(0.2)
+    assert reward < -90.0
+    assert terminated is True
+    assert truncated is False
+    assert step_info["reached_goal"] is False
+    assert step_info["collided"] is True
+    assert step_info["timed_out"] is False
+    assert step_info["reward_breakdown"].obstacle == pytest.approx(-100.0)
+    assert step_info["minimum_safety_distance"] == pytest.approx(-0.05)
+    assert step_info["episode_metrics"].success is False
+    assert step_info["episode_metrics"].collided is True
+    assert step_info["episode_metrics"].minimum_safety_distance == pytest.approx(-0.05)
+
+
+def test_pybullet_training_env_uses_swift_obstacle_tail_without_builtin_pybullet_obstacles(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    captured_kwargs = {}
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(10.0, 0.0, 0.0),
+        obstacles=(ObstacleState(position=(1.0, 0.0, 0.0), radius=0.25),),
+        max_steps=4,
+        safety_margin=0.1,
+    )
+
+    def aviary_factory(**kwargs):
+        captured_kwargs["kwargs"] = kwargs
+        return FakeVelocityAviary()
+
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        velocity_aviary_cls=aviary_factory,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, reset_info = training_env.reset(seed=19)
+    next_observation, _, terminated, _, step_info = training_env.step(
+        DroneAction(speed=0.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert captured_kwargs["kwargs"]["obstacles"] is False
+    assert observation[10:13] == pytest.approx((0.0, -2.0, -3.0))
+    assert observation[13] == pytest.approx(0.25)
+    assert reset_info["minimum_safety_distance"] == pytest.approx(math.sqrt(13.0) - 0.25)
+    assert next_observation[13] == pytest.approx(0.25)
+    assert terminated is False
+    assert step_info["collided"] is False
+
+
+def test_pybullet_training_env_detects_collision_against_configured_static_obstacle(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(10.0, 0.0, 0.0),
+        obstacles=(ObstacleState(position=(1.1, 2.2, 3.3), radius=0.3),),
+        max_steps=4,
+        safety_margin=0.1,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        velocity_aviary_cls=lambda **_: FakeVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    training_env.reset(seed=23)
+    next_observation, reward, terminated, truncated, step_info = training_env.step(
+        DroneAction(speed=0.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert next_observation[10:13] == pytest.approx((0.0, 0.0, 0.0))
+    assert next_observation[13] == pytest.approx(0.3)
+    assert reward < -90.0
+    assert terminated is True
+    assert truncated is False
+    assert step_info["collided"] is True
+    assert step_info["episode_metrics"].success is False
+    assert step_info["episode_metrics"].minimum_safety_distance == pytest.approx(-0.3)
+
+
 class FakeVelocityAviary:
     def __init__(self) -> None:
         self.reset_seed = None
@@ -191,3 +353,70 @@ class FakeGoalVelocityAviary:
 
     def close(self):
         pass
+
+
+class FakeCollisionVelocityAviary:
+    def reset(self, seed=None, options=None):
+        return [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]], {
+            "seed": seed
+        }
+
+    def step(self, action):
+        return (
+            [[0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]],
+            -7.0,
+            False,
+            False,
+            {
+                "collided": True,
+                "minimum_safety_distance": -0.05,
+                "nearest_obstacle_relative": (0.0, 0.0, 0.0),
+                "nearest_obstacle_radius": 0.2,
+            },
+        )
+
+    def close(self):
+        pass
+
+
+class FakeContactVelocityAviary(FakeVelocityAviary):
+    PLANE_ID = 0
+
+    def reset(self, seed=None, options=None):
+        observation, info = super().reset(seed=seed, options=options)
+        info.update({"collided": False, "minimum_safety_distance": 999.0})
+        return observation, info
+
+    def step(self, action):
+        observation, reward, terminated, truncated, info = super().step(action)
+        info.update({"collided": False, "minimum_safety_distance": 999.0})
+        return observation, reward, terminated, truncated, info
+
+    def getPyBulletClient(self):
+        return 123
+
+    def getDroneIds(self):
+        return [1]
+
+
+class FakePyBulletContacts:
+    def getNumBodies(self, physicsClientId=None):
+        assert physicsClientId == 123
+        return 3
+
+    def getContactPoints(self, bodyA=None, bodyB=None, physicsClientId=None):
+        assert bodyA == 1
+        assert bodyB == 2
+        assert physicsClientId == 123
+        return [(0, bodyA, bodyB, -1, -1, (0, 0, 0), (0, 0, 0), (0, 0, 1), -0.025, 3.0)]
+
+    def getClosestPoints(self, bodyA=None, bodyB=None, distance=None, physicsClientId=None):
+        assert bodyA == 1
+        assert bodyB == 2
+        assert physicsClientId == 123
+        return [(0, bodyA, bodyB, -1, -1, (0, 0, 0), (0, 0, 0), (0, 0, 1), -0.025, 3.0)]
+
+    def getBasePositionAndOrientation(self, bodyUniqueId=None, physicsClientId=None):
+        assert bodyUniqueId == 2
+        assert physicsClientId == 123
+        return (1.5, 2.5, 3.5), (0, 0, 0, 1)

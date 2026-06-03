@@ -20,45 +20,50 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=ROOT / "configs" / "simulation.yaml")
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--runtime", choices=("auto", "direct", "pixi"), default="auto")
+    parser.add_argument("--enable-obstacles", action="store_true")
     args = parser.parse_args(argv)
 
     if args.steps <= 0:
         raise ValueError("steps must be positive")
     settings = load_simulation_settings(args.config)
     if args.runtime == "pixi":
-        return _run_pixi_runtime_smoke(settings, args.steps)
+        return _run_pixi_runtime_smoke(settings, args.steps, args.enable_obstacles)
 
     try:
-        env = PyBulletVelocityRuntimeEnv(settings)
+        env = PyBulletVelocityRuntimeEnv(settings, enable_obstacles=args.enable_obstacles)
     except PyBulletRuntimeUnavailableError as exc:
         if args.runtime == "auto":
             print(f"PyBullet direct runtime unavailable: {exc}")
-            return _run_pixi_runtime_smoke(settings, args.steps)
+            return _run_pixi_runtime_smoke(settings, args.steps, args.enable_obstacles)
         print(f"PyBullet runtime unavailable: {exc}")
         return 2
 
     try:
-        observation, _ = env.reset(seed=0)
+        observation, info = env.reset(seed=0)
         reward = 0.0
         terminated = False
         truncated = False
         for _ in range(args.steps):
-            observation, reward, terminated, truncated, _ = env.step(
+            observation, reward, terminated, truncated, info = env.step(
                 DroneAction(speed=0.0, heading_delta=0.0, climb_rate=0.0)
             )
     finally:
         env.close()
 
     print("SWIFT PyBullet runtime smoke: OK")
-    print(f"observation_dim={len(observation)} reward={reward} terminated={terminated} truncated={truncated}")
+    print(
+        f"observation_dim={len(observation)} reward={reward} terminated={terminated} "
+        f"truncated={truncated} obstacles_enabled={bool(args.enable_obstacles)} "
+        f"collided={bool(info.get('collided', False))} contact_count={int(info.get('contact_count', 0))}"
+    )
     return 0
 
 
-def _run_pixi_runtime_smoke(settings, steps: int) -> int:
+def _run_pixi_runtime_smoke(settings, steps: int, enable_obstacles: bool = False) -> int:
     if not settings.pixi_executable.is_file():
         print(f"PyBullet runtime unavailable: Pixi executable not found: {settings.pixi_executable}")
         return 2
-    code = _pixi_smoke_code(settings.pybullet_root, steps)
+    code = _pixi_smoke_code(settings.pybullet_root, steps, enable_obstacles=enable_obstacles)
     completed = subprocess.run(
         [str(settings.pixi_executable), "run", "python", "-c", code],
         cwd=settings.pybullet_root,
@@ -76,7 +81,8 @@ def _run_pixi_runtime_smoke(settings, steps: int) -> int:
     return 0
 
 
-def _pixi_smoke_code(pybullet_root: Path, steps: int) -> str:
+def _pixi_smoke_code(pybullet_root: Path, steps: int, enable_obstacles: bool = False) -> str:
+    obstacles_literal = "True" if enable_obstacles else "False"
     return f"""
 import sys
 from pathlib import Path
@@ -94,7 +100,7 @@ env = VelocityAviary(
     physics=Physics.PYB,
     gui=False,
     record=False,
-    obstacles=False,
+    obstacles={obstacles_literal},
     user_debug_gui=False,
 )
 try:
@@ -107,7 +113,7 @@ try:
         obs, reward, terminated, truncated, _ = env.step(action)
     row = obs[0]
     swift_obs = tuple(row[0:3]) + tuple(row[10:13]) + (row[9],) + (0.0,) * 8
-    print(f"observation_dim={{len(swift_obs)}} raw_observation_dim={{int(obs.shape[-1])}} reward={{float(reward)}} terminated={{bool(terminated)}} truncated={{bool(truncated)}}")
+    print(f"observation_dim={{len(swift_obs)}} raw_observation_dim={{int(obs.shape[-1])}} reward={{float(reward)}} terminated={{bool(terminated)}} truncated={{bool(truncated)}} obstacles_enabled={obstacles_literal}")
 finally:
     env.close()
 """

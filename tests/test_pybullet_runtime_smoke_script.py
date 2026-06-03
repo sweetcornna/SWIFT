@@ -4,6 +4,15 @@ from pathlib import Path
 
 import pytest
 
+from scripts.run_pybullet_runtime_smoke import _pixi_smoke_code
+
+
+def test_pybullet_runtime_smoke_pixi_code_can_enable_obstacles():
+    code = _pixi_smoke_code(Path(r"D:\project\pybullet"), steps=1, enable_obstacles=True)
+
+    assert "obstacles=True" in code
+    assert "obstacles_enabled=True" in code
+
 
 def test_pybullet_runtime_smoke_script_runs_or_skips_cleanly():
     result = subprocess.run(
