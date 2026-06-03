@@ -163,6 +163,9 @@ class PyBulletVelocityRuntimeEnv:
             relative = self._relative_body_position(p, client, nearest_obstacle_id, observation[0:3])
             if relative is not None:
                 info["nearest_obstacle_relative"] = relative
+            radius = self._body_radius(p, client, nearest_obstacle_id)
+            if radius is not None:
+                info["nearest_obstacle_radius"] = radius
         return info
 
     def _obstacle_ids(self, pybullet_module: Any, client: Any, drone_ids: tuple[int, ...]) -> tuple[int, ...]:
@@ -189,6 +192,25 @@ class PyBulletVelocityRuntimeEnv:
         if position is None or len(position) != 3:
             return None
         return tuple(float(position[index]) - float(drone_position[index]) for index in range(3))
+
+    @staticmethod
+    def _body_radius(pybullet_module: Any, client: Any, body_id: int) -> float | None:
+        getter = getattr(pybullet_module, "getAABB", None)
+        if getter is None:
+            return None
+        try:
+            bounds = getter(bodyUniqueId=int(body_id), physicsClientId=client)
+        except Exception:
+            return None
+        if not isinstance(bounds, tuple) or len(bounds) != 2:
+            return None
+        lower, upper = bounds
+        if lower is None or upper is None or len(lower) != 3 or len(upper) != 3:
+            return None
+        radius = max((float(upper[index]) - float(lower[index])) / 2.0 for index in range(3))
+        if not math.isfinite(radius) or radius < 0.0:
+            return None
+        return radius
 
     @staticmethod
     def _info(raw_info: Any, runtime_info: dict[str, Any] | None = None) -> dict[str, Any]:

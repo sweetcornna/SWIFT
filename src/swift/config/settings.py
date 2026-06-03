@@ -132,6 +132,104 @@ def load_training_settings(path: str | Path) -> TrainingSettings:
     return TrainingSettings.from_mapping(load_yaml_file(path))
 
 
+@dataclass(frozen=True)
+class ConvergenceGateProfile:
+    convergence_claim_allowed: bool = True
+    required_evidence_level: str = "long_training_convergence"
+    required_variants: tuple[str, ...] = ("ppo_mlp", "ppo_hca", "ppo_hca_apf")
+    min_success_rate: float = 0.95
+    max_collision_rate: float = 0.0
+    max_timeout_rate: float = 0.05
+    min_total_timesteps: int = 4096
+    min_episodes_completed: int = 10
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "ConvergenceGateProfile":
+        defaults = cls()
+        required_evidence_level = str(
+            mapping.get("required_evidence_level", defaults.required_evidence_level)
+        ).strip() or defaults.required_evidence_level
+        default_claim_allowed = required_evidence_level == "long_training_convergence"
+        required_variants = mapping.get("required_variants", defaults.required_variants)
+        if isinstance(required_variants, str) or not isinstance(required_variants, Sequence):
+            raise ValueError("required_variants must be a list of variant names")
+        variants = tuple(str(variant).strip() for variant in required_variants if str(variant).strip())
+        if not variants:
+            raise ValueError("required_variants must contain at least one variant")
+        return cls(
+            convergence_claim_allowed=_bool_value(
+                "convergence_claim_allowed",
+                mapping.get("convergence_claim_allowed", default_claim_allowed),
+            ),
+            required_evidence_level=required_evidence_level,
+            required_variants=variants,
+            min_success_rate=_unit_interval_float(
+                "min_success_rate",
+                mapping.get("min_success_rate", defaults.min_success_rate),
+            ),
+            max_collision_rate=_unit_interval_float(
+                "max_collision_rate",
+                mapping.get("max_collision_rate", defaults.max_collision_rate),
+            ),
+            max_timeout_rate=_unit_interval_float(
+                "max_timeout_rate",
+                mapping.get("max_timeout_rate", defaults.max_timeout_rate),
+            ),
+            min_total_timesteps=_positive_int(
+                "min_total_timesteps",
+                mapping.get("min_total_timesteps", defaults.min_total_timesteps),
+            ),
+            min_episodes_completed=_positive_int(
+                "min_episodes_completed",
+                mapping.get("min_episodes_completed", defaults.min_episodes_completed),
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class EvaluationSettings:
+    metrics: tuple[str, ...] = ()
+    artifact_root: Path = Path("outputs")
+    episode_logs: Path = Path("outputs/episodes")
+    experiment_reports: Path = Path("outputs/reports")
+    default_convergence_profile: str = "long_training_convergence"
+    convergence_profiles: dict[str, ConvergenceGateProfile] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "EvaluationSettings":
+        metrics = _string_tuple("metrics", mapping.get("metrics", ()))
+        artifacts = _mapping_section(mapping, "artifacts")
+        gate = _mapping_section(mapping, "convergence_gate")
+        profiles_mapping = _mapping_section(gate, "profiles")
+        profiles = {
+            str(name).strip(): ConvergenceGateProfile.from_mapping(_profile_mapping(profile))
+            for name, profile in profiles_mapping.items()
+            if str(name).strip()
+        }
+        default_profile = str(gate.get("default_profile", cls.default_convergence_profile)).strip()
+        if profiles and default_profile not in profiles:
+            raise ValueError("default convergence profile must exist in convergence_gate.profiles")
+        return cls(
+            metrics=metrics,
+            artifact_root=Path(str(artifacts.get("root", cls.artifact_root))).expanduser(),
+            episode_logs=Path(str(artifacts.get("episode_logs", cls.episode_logs))).expanduser(),
+            experiment_reports=Path(str(artifacts.get("experiment_reports", cls.experiment_reports))).expanduser(),
+            default_convergence_profile=default_profile,
+            convergence_profiles=profiles,
+        )
+
+    def convergence_profile(self, name: str | None = None) -> ConvergenceGateProfile:
+        profile_name = str(name or self.default_convergence_profile).strip()
+        try:
+            return self.convergence_profiles[profile_name]
+        except KeyError as exc:
+            raise ValueError(f"unknown convergence profile: {profile_name}") from exc
+
+
+def load_evaluation_settings(path: str | Path) -> EvaluationSettings:
+    return EvaluationSettings.from_mapping(load_yaml_file(path))
+
+
 def _mapping_section(mapping: Mapping[str, Any], name: str) -> Mapping[str, Any]:
     value = mapping.get(name, {})
     if value is None:
@@ -139,6 +237,25 @@ def _mapping_section(mapping: Mapping[str, Any], name: str) -> Mapping[str, Any]
     if not isinstance(value, Mapping):
         raise ValueError(f"{name} must be a mapping")
     return value
+
+
+def _profile_mapping(value: Any) -> Mapping[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("convergence profile must be a mapping")
+    return value
+
+
+def _string_tuple(name: str, value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError(f"{name} must be a list of strings")
+    values = tuple(str(item).strip() for item in value if str(item).strip())
+    if any(not isinstance(item, str) for item in value):
+        raise ValueError(f"{name} must be a list of strings")
+    return values
 
 
 def _artifact_section(mapping: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -242,3 +359,22 @@ def _unit_interval(name: str, value: Any) -> float:
     if not math.isfinite(numeric) or numeric <= 0.0 or numeric > 1.0:
         raise ValueError(f"{name} must be greater than 0 and <= 1")
     return numeric
+
+
+def _unit_interval_float(name: str, value: Any) -> float:
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0.0 or numeric > 1.0:
+        raise ValueError(f"{name} must be between 0 and 1")
+    return numeric
+
+
+def _bool_value(name: str, value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y"}:
+            return True
+        if normalized in {"false", "0", "no", "n"}:
+            return False
+    raise ValueError(f"{name} must be a boolean")

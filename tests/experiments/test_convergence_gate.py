@@ -104,6 +104,82 @@ def test_convergence_gate_rejects_missing_required_ablation_variant(tmp_path: Pa
     assert failed["required_variants_completed"]["expected"] == ["ppo_mlp", "ppo_hca", "ppo_hca_apf"]
 
 
+def test_convergence_gate_rejects_unknown_best_variant_instead_of_falling_back(tmp_path: Path):
+    input_path = tmp_path / "unknown_best.json"
+    report = _ablation_report(evidence_level="long_training_convergence")
+    report["best_variant"] = "missing_variant"
+    input_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="best_variant must match one variant"):
+        run_convergence_gate(ConvergenceGateConfig(input_report=input_path))
+
+
+def test_convergence_gate_rejects_out_of_range_rate_metrics(tmp_path: Path):
+    input_path = tmp_path / "bad_rate.json"
+    report = _ablation_report(evidence_level="long_training_convergence")
+    report["variants"][2]["metrics"]["success_rate"] = 1.2
+    input_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="success_rate must be between 0 and 1"):
+        run_convergence_gate(ConvergenceGateConfig(input_report=input_path))
+
+
+def test_convergence_gate_requires_explicit_completed_true_for_required_variants(tmp_path: Path):
+    input_path = tmp_path / "implicit_completed.json"
+    output_path = tmp_path / "gate.json"
+    report = _ablation_report(evidence_level="long_training_convergence")
+    for variant in report["variants"]:
+        del variant["completed"]
+    input_path.write_text(json.dumps(report), encoding="utf-8")
+
+    gated = run_convergence_gate(
+        ConvergenceGateConfig(
+            input_report=input_path,
+            output=output_path,
+            thresholds=ConvergenceThresholds(
+                min_success_rate=0.9,
+                max_collision_rate=0.0,
+                max_timeout_rate=0.1,
+                min_total_timesteps=4096,
+                min_episodes_completed=10,
+            ),
+        )
+    )
+
+    failed = {gate["name"]: gate for gate in gated["gates"] if not gate["passed"]}
+    assert gated["readiness"]["convergence_claim"] is False
+    assert failed["required_variants_completed"]["actual"] == []
+
+
+def test_convergence_gate_rejects_mismatched_evidence_levels(tmp_path: Path):
+    input_path = tmp_path / "mismatched_evidence.json"
+    output_path = tmp_path / "gate.json"
+    report = _ablation_report(evidence_level="long_training_convergence")
+    report["lineage"]["evidence_level"] = "cpu_smoke_ablation"
+    input_path.write_text(json.dumps(report), encoding="utf-8")
+
+    gated = run_convergence_gate(
+        ConvergenceGateConfig(
+            input_report=input_path,
+            output=output_path,
+            thresholds=ConvergenceThresholds(
+                min_success_rate=0.9,
+                max_collision_rate=0.0,
+                max_timeout_rate=0.1,
+                min_total_timesteps=4096,
+                min_episodes_completed=10,
+            ),
+        )
+    )
+
+    failed = {gate["name"]: gate for gate in gated["gates"] if not gate["passed"]}
+    assert gated["readiness"]["convergence_claim"] is False
+    assert failed["evidence_level_consistency"]["actual"] == [
+        "cpu_smoke_ablation",
+        "long_training_convergence",
+    ]
+
+
 def test_convergence_gate_rejects_non_finite_metrics(tmp_path: Path):
     input_path = tmp_path / "bad.json"
     bad_report = _ablation_report(evidence_level="long_training_convergence")

@@ -31,3 +31,25 @@ def test_risk_register_covers_bootstrap_risks():
 
     for risk in ["Sparse reward", "PPO-HCA coupling", "APF local minima", "GPU availability"]:
         assert risk in text
+
+
+def test_docs_define_evidence_profile_boundaries():
+    combined = "\n".join(
+        (ROOT / relative).read_text(encoding="utf-8")
+        for relative in [
+            "docs/architecture.md",
+            "docs/implementation-roadmap.md",
+            "docs/risk-register.md",
+        ]
+    )
+
+    for profile in [
+        "cpu_smoke_ablation",
+        "deterministic_multi_scenario_tuning",
+        "long_training_convergence",
+    ]:
+        assert profile in combined
+
+    assert "cpu_smoke_ablation is not convergence evidence" in combined
+    assert "deterministic_multi_scenario_tuning is not convergence evidence" in combined
+    assert "only long_training_convergence may support a convergence claim" in combined

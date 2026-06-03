@@ -36,6 +36,10 @@ The current Stage 2 slice adds a Torch-lazy HCA observation adapter, target and
 threat attention feature extractor, HCA actor-critic, and a CPU PPO+HCA smoke
 runner with JSON history and checkpoint artifacts.
 
+The ablation runner labels short local variant comparisons as
+`cpu_smoke_ablation`. This profile is used to verify implementation health and
+artifact lineage only; cpu_smoke_ablation is not convergence evidence.
+
 ## Stage 3: HCA+APF Fusion
 
 Embed APF attraction and repulsion vectors into the HCA perception flow. Measure
@@ -49,3 +53,10 @@ without changing PPO input dimensions.
 Run ablations across building density, dynamic drone count, delivery targets,
 and altitude preferences. Produce reports, demo video inputs, and final project
 evidence.
+
+The deterministic Stage 4 evaluator emits `deterministic_multi_scenario_tuning`
+evidence. It checks scenario coverage and ranked candidate acceptance, but
+deterministic_multi_scenario_tuning is not convergence evidence. Long-horizon
+training must be recorded separately as `long_training_convergence`; only
+long_training_convergence may support a convergence claim after the configured
+gate accepts the report.

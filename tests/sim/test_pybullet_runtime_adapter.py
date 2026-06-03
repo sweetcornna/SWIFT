@@ -120,9 +120,37 @@ def test_runtime_env_detects_headless_pybullet_contacts(tmp_path: Path, monkeypa
     assert reset_info["collided"] is True
     assert reset_info["minimum_safety_distance"] == pytest.approx(-0.025)
     assert reset_info["nearest_obstacle_body_id"] == 2
+    assert reset_info["nearest_obstacle_radius"] == pytest.approx(0.2)
     assert step_info["contact_count"] == 1
     assert step_info["collided"] is True
     assert step_info["minimum_safety_distance"] == pytest.approx(-0.025)
+    assert step_info["nearest_obstacle_radius"] == pytest.approx(0.2)
+
+
+def test_runtime_env_omits_obstacle_radius_when_aabb_lookup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletContactsWithBrokenAabb()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        enable_obstacles=True,
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    _, reset_info = runtime.reset(seed=37)
+    _, _, _, _, step_info = runtime.step(DroneAction(speed=0.0, heading_delta=0.0, climb_rate=0.0))
+    runtime.close()
+
+    assert reset_info["nearest_obstacle_relative"] == pytest.approx((0.5, 0.5, 0.5))
+    assert "nearest_obstacle_radius" not in reset_info
+    assert "nearest_obstacle_radius" not in step_info
 
 
 def test_pybullet_training_env_exposes_ppo_contract_with_fake_aviary(tmp_path: Path):
@@ -237,6 +265,38 @@ def test_pybullet_training_env_propagates_runtime_collision_and_obstacle_metrics
     assert step_info["episode_metrics"].success is False
     assert step_info["episode_metrics"].collided is True
     assert step_info["episode_metrics"].minimum_safety_distance == pytest.approx(-0.05)
+
+
+def test_pybullet_training_env_uses_runtime_pybullet_obstacle_tail_without_static_obstacles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletContacts()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(10.0, 0.0, 0.0),
+        obstacles=(),
+        max_steps=4,
+        safety_margin=0.1,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        enable_pybullet_obstacles=True,
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, reset_info = training_env.reset(seed=31)
+
+    assert observation[10:13] == pytest.approx((0.5, 0.5, 0.5))
+    assert observation[13] == pytest.approx(0.2)
+    assert reset_info["nearest_obstacle_radius"] == pytest.approx(0.2)
+    assert reset_info["minimum_safety_distance"] == pytest.approx(-0.025)
 
 
 def test_pybullet_training_env_uses_swift_obstacle_tail_without_builtin_pybullet_obstacles(tmp_path: Path):
@@ -420,3 +480,13 @@ class FakePyBulletContacts:
         assert bodyUniqueId == 2
         assert physicsClientId == 123
         return (1.5, 2.5, 3.5), (0, 0, 0, 1)
+
+    def getAABB(self, bodyUniqueId=None, physicsClientId=None):
+        assert bodyUniqueId == 2
+        assert physicsClientId == 123
+        return (1.3, 2.3, 3.3), (1.7, 2.7, 3.7)
+
+
+class FakePyBulletContactsWithBrokenAabb(FakePyBulletContacts):
+    def getAABB(self, bodyUniqueId=None, physicsClientId=None):
+        raise RuntimeError("AABB unavailable")

@@ -24,6 +24,7 @@ BOUNDARY_NOTES = (
 
 @dataclass(frozen=True)
 class ConvergenceThresholds:
+    convergence_claim_allowed: bool = True
     min_success_rate: float = 0.95
     max_collision_rate: float = 0.0
     max_timeout_rate: float = 0.05
@@ -42,10 +43,16 @@ class ConvergenceThresholds:
             raise ValueError("min_episodes_completed must be positive")
         object.__setattr__(self, "min_total_timesteps", int(self.min_total_timesteps))
         object.__setattr__(self, "min_episodes_completed", int(self.min_episodes_completed))
+        required_evidence_level = str(self.required_evidence_level).strip() or "long_training_convergence"
         object.__setattr__(
             self,
             "required_evidence_level",
-            str(self.required_evidence_level).strip() or "long_training_convergence",
+            required_evidence_level,
+        )
+        object.__setattr__(
+            self,
+            "convergence_claim_allowed",
+            bool(self.convergence_claim_allowed) and required_evidence_level == "long_training_convergence",
         )
         variants = tuple(str(variant).strip() for variant in self.required_variants if str(variant).strip())
         if not variants:
@@ -149,6 +156,7 @@ def _best_candidate(source: dict[str, Any]) -> dict[str, Any]:
         for variant in variants:
             if isinstance(variant, dict) and variant.get("variant") == best_variant:
                 return _candidate_record(variant)
+        raise ValueError("best_variant must match one variant")
     if isinstance(variants, list) and variants:
         return _candidate_record(variants[0])
     if "metrics" in source and "training" in source:
@@ -185,8 +193,21 @@ def _gates(
     metrics = candidate["metrics"]
     training = candidate["training"]
     evidence_level = _evidence_level(source)
+    evidence_levels = _evidence_level_values(source)
     completed_variants = _completed_variants(source)
     return [
+        _gate(
+            "convergence_claim_allowed",
+            thresholds.convergence_claim_allowed,
+            True,
+            thresholds.convergence_claim_allowed,
+        ),
+        _gate(
+            "evidence_level_consistency",
+            evidence_levels,
+            "single evidence level",
+            len(evidence_levels) <= 1,
+        ),
         _gate("evidence_level", evidence_level, thresholds.required_evidence_level, evidence_level == thresholds.required_evidence_level),
         _gate(
             "required_variants_completed",
@@ -235,7 +256,7 @@ def _completed_variants(source: dict[str, Any]) -> list[str]:
     for variant in variants:
         if not isinstance(variant, dict):
             continue
-        if bool(variant.get("completed", True)):
+        if variant.get("completed") is True:
             completed.append(str(variant.get("variant", "")))
     return sorted(name for name in completed if name)
 
@@ -259,10 +280,23 @@ def _evidence_level(source: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _evidence_level_values(source: dict[str, Any]) -> list[str]:
+    values = []
+    readiness = source.get("readiness", {})
+    if isinstance(readiness, dict) and readiness.get("evidence_level"):
+        values.append(str(readiness["evidence_level"]))
+    lineage = source.get("lineage", {})
+    if isinstance(lineage, dict) and lineage.get("evidence_level"):
+        values.append(str(lineage["evidence_level"]))
+    return sorted(set(values))
+
+
 def _finite_metric(metrics: dict[str, Any], key: str) -> float:
     value = float(metrics.get(key, 0.0))
     if not math.isfinite(value):
         raise ValueError(f"{key} must be finite")
+    if key in {"success_rate", "collision_rate", "timeout_rate"} and not (0.0 <= value <= 1.0):
+        raise ValueError(f"{key} must be between 0 and 1")
     return value
 
 
