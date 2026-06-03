@@ -128,6 +128,19 @@ def train_ppo_mlp(
     model = MLPActorCritic(config.network).to(torch.device("cpu"))
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     env = make_env()
+    try:
+        return _train_ppo_mlp_open_env(env=env, model=model, optimizer=optimizer, config=config)
+    finally:
+        _close_env(env)
+
+
+def _train_ppo_mlp_open_env(
+    *,
+    env: Any,
+    model: MLPActorCritic,
+    optimizer: torch.optim.Optimizer,
+    config: PPOTrainingConfig,
+) -> PPOTrainingResult:
     observation, _ = env.reset(seed=config.seed)
 
     total_timesteps = 0
@@ -256,6 +269,12 @@ def train_ppo_mlp(
     if config.checkpoint_path is not None:
         _save_checkpoint(config.checkpoint_path, model, optimizer, config, result)
     return result
+
+
+def _close_env(env: Any) -> None:
+    close = getattr(env, "close", None)
+    if close is not None:
+        close()
 
 
 def _collect_rollout(

@@ -1,13 +1,15 @@
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 torch = pytest.importorskip("torch")
 
 from swift.core import DroneAction
-from swift.envs import SimpleAvoidanceEnv, SimpleAvoidanceSettings
+from swift.config import SimulationSettings
+from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceEnv, SimpleAvoidanceSettings
 from swift.rl.ppo import MLPActorCriticConfig, PPOTrainingConfig
 from swift.rl.torch_ppo import (
     MLPActorCritic,
@@ -100,6 +102,67 @@ def test_train_ppo_mlp_runs_tiny_cpu_update_and_reports_finite_metrics():
         result.final_entropy,
     ):
         assert math.isfinite(metric)
+
+
+def test_train_ppo_mlp_closes_env_after_training():
+    created = []
+
+    def make_env():
+        env = ClosingEnv()
+        created.append(env)
+        return env
+
+    train_ppo_mlp(
+        make_env,
+        PPOTrainingConfig(
+            total_timesteps=32,
+            rollout_steps=16,
+            minibatch_size=8,
+            update_epochs=1,
+            torch_num_threads=1,
+            seed=123,
+            network=MLPActorCriticConfig(hidden_sizes=(8,)),
+        ),
+    )
+
+    assert created
+    assert created[0].closed is True
+
+
+def test_train_ppo_mlp_runs_tiny_update_with_pybullet_training_env_fake_runtime(tmp_path: Path):
+    def make_env():
+        return PyBulletVelocityTrainingEnv(
+            simulation_settings=SimulationSettings(
+                pybullet_root=tmp_path,
+                pixi_executable=tmp_path / "pixi.exe",
+                required_tasks=(),
+                check_task="test",
+                smoke_task="drone-demo",
+                command_timeout_seconds=30,
+            ),
+            settings=SimpleAvoidanceSettings(max_steps=4, max_speed=1.0, max_climb_rate=0.5),
+            velocity_aviary_cls=lambda **_: FakeVelocityAviary(),
+            drone_model=SimpleNamespace(CF2X="cf2x"),
+            physics=SimpleNamespace(PYB="pyb"),
+        )
+
+    result = train_ppo_mlp(
+        make_env,
+        PPOTrainingConfig(
+            total_timesteps=32,
+            rollout_steps=16,
+            minibatch_size=8,
+            update_epochs=1,
+            torch_num_threads=1,
+            seed=123,
+            network=MLPActorCriticConfig(hidden_sizes=(8,)),
+        ),
+    )
+
+    assert result.total_timesteps == 32
+    assert result.updates >= 1
+    assert result.episodes_completed >= 1
+    assert math.isfinite(result.average_episode_return)
 
 
 def test_train_ppo_mlp_writes_checkpoint_and_update_history(tmp_path: Path):
@@ -204,3 +267,38 @@ def test_load_checkpoint_rejects_wrong_record_type(tmp_path: Path):
 
     with pytest.raises(ValueError, match="ppo_checkpoint"):
         load_ppo_mlp_checkpoint(checkpoint_path)
+
+
+class ClosingEnv:
+    settings = SimpleAvoidanceSettings(max_steps=1)
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def reset(self, seed=None):
+        return (0.0,) * 15, {"seed": seed}
+
+    def step(self, action):
+        return (0.0,) * 15, -1.0, False, True, {"timed_out": True, "collided": False}
+
+    def close(self):
+        self.closed = True
+
+
+class FakeVelocityAviary:
+    def reset(self, seed=None, options=None):
+        return [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]], {
+            "seed": seed
+        }
+
+    def step(self, action):
+        return (
+            [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]],
+            -1.0,
+            False,
+            False,
+            {"source": "fake"},
+        )
+
+    def close(self):
+        pass

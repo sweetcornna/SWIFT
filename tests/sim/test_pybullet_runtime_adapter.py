@@ -5,6 +5,7 @@ import pytest
 
 from swift.config import SimulationSettings
 from swift.core import DroneAction
+from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceSettings
 from swift.sim.pybullet_runtime import (
     PyBulletRuntimeUnavailableError,
     PyBulletVelocityRuntimeEnv,
@@ -71,6 +72,39 @@ def test_runtime_env_wraps_velocity_aviary_contract(tmp_path: Path):
     assert step_info["backend"] == "pybullet_velocity_aviary"
     assert fake_env.reset_seed == 7
     assert fake_env.last_action[0] == pytest.approx([0.0, 0.0, 0.0, 0.0])
+    assert fake_env.closed is True
+
+
+def test_pybullet_training_env_exposes_ppo_contract_with_fake_aviary(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_env = FakeVelocityAviary()
+    settings = SimpleAvoidanceSettings(max_steps=2, max_speed=1.5, max_climb_rate=0.25)
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        velocity_aviary_cls=lambda **_: fake_env,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, info = training_env.reset(seed=11)
+    step_one = training_env.step(DroneAction(speed=0.5, heading_delta=0.0, climb_rate=0.0))
+    step_two = training_env.step(DroneAction(speed=0.5, heading_delta=0.0, climb_rate=0.0))
+    training_env.close()
+
+    assert training_env.settings == settings
+    assert training_env.observation_shape == (15,)
+    assert training_env.action_shape == (3,)
+    assert len(observation) == 15
+    assert len(step_one[0]) == 15
+    assert len(step_two[0]) == 15
+    assert info["backend"] == "pybullet_velocity_aviary"
+    assert step_one[3] is False
+    assert step_one[4]["timed_out"] is False
+    assert step_two[2] is False
+    assert step_two[3] is True
+    assert step_two[4]["timed_out"] is True
     assert fake_env.closed is True
 
 
