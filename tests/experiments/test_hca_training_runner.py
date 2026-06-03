@@ -39,8 +39,13 @@ def test_hca_training_smoke_returns_json_safe_summary(tmp_path: Path):
     assert summary["training"]["updates"] >= 1
     history_path = Path(summary["artifacts"]["training_history_jsonl"])
     checkpoint_path = Path(summary["artifacts"]["checkpoint_path"])
+    manifest_path = Path(summary["artifacts"]["manifest_json"])
     assert history_path.exists()
     assert checkpoint_path.exists()
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["subject_record_type"] == "ppo_hca_training_smoke"
+    assert manifest["lineage"]["training_backend"] == "torch_ppo_hca"
     assert "NaN" not in raw_summary
     assert "Infinity" not in raw_summary
     for value in summary["training"].values():
@@ -70,6 +75,7 @@ def test_hca_training_smoke_can_enable_apf_fusion(tmp_path: Path):
     assert summary["network"]["apf_enabled"] is True
     assert summary["network"]["apf_config"]["attractive_gain"] == 1.0
     assert "ppo_hca_apf" in summary["artifacts"]["checkpoint_path"]
+    assert Path(summary["artifacts"]["manifest_json"]).exists()
 
 
 def test_hca_training_smoke_rejects_non_positive_total_timesteps(tmp_path: Path):

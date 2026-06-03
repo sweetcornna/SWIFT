@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ class ExperimentArtifactPaths:
     episode_jsonl: Path
     summary_json: Path
     checkpoint_dir: Path
+    manifest_json: Path
 
 
 class ExperimentArtifactWriter:
@@ -42,6 +44,10 @@ class ExperimentArtifactWriter:
             episode_jsonl=self.config.episode_logs / stage_slug / variant_slug / f"{run_slug}.jsonl",
             summary_json=self.config.experiment_reports / stage_slug / variant_slug / f"{run_slug}.json",
             checkpoint_dir=self.config.checkpoints / stage_slug / variant_slug / run_slug,
+            manifest_json=self.config.experiment_reports
+            / stage_slug
+            / variant_slug
+            / f"{run_slug}.manifest.json",
         )
 
     def write_episode(self, path: str | Path, record: dict[str, Any]) -> None:
@@ -56,6 +62,56 @@ class ExperimentArtifactWriter:
         summary_path = Path(path)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(f"{serialized}\n", encoding="utf-8")
+
+    def write_manifest(self, path: str | Path, manifest: dict[str, Any]) -> None:
+        self.write_summary(path, manifest)
+
+
+def file_sha256(path: str | Path) -> str:
+    target = Path(path)
+    digest = hashlib.sha256()
+    with target.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def artifact_reference(path: str | Path, *, role: str) -> dict[str, Any]:
+    target = Path(path)
+    if not target.is_file():
+        raise FileNotFoundError(str(target))
+    return {
+        "role": _safe_component(role),
+        "path": str(target),
+        "sha256": file_sha256(target),
+        "bytes": target.stat().st_size,
+    }
+
+
+def build_artifact_manifest(
+    *,
+    subject_record_type: str,
+    run_id: str,
+    stage: str,
+    variant: str,
+    inputs: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    outputs: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    lineage: dict[str, Any] | None = None,
+    generated_at_utc: datetime | None = None,
+) -> dict[str, Any]:
+    timestamp = generated_at_utc or datetime.now(UTC)
+    return {
+        "schema_version": 1,
+        "record_type": "experiment_artifact_manifest",
+        "subject_record_type": str(subject_record_type),
+        "run_id": str(run_id),
+        "stage": str(stage),
+        "variant": str(variant),
+        "generated_at_utc": timestamp.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "lineage": dict(lineage or {}),
+        "inputs": [dict(reference) for reference in inputs],
+        "outputs": [dict(reference) for reference in outputs],
+    }
 
 
 def build_run_id(

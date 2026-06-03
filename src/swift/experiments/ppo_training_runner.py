@@ -8,7 +8,13 @@ import hashlib
 import json
 
 from swift.config import TrainingSettings
-from swift.experiments.artifacts import ExperimentArtifactWriter, build_run_id, checkpoint_filename
+from swift.experiments.artifacts import (
+    ExperimentArtifactWriter,
+    artifact_reference,
+    build_artifact_manifest,
+    build_run_id,
+    checkpoint_filename,
+)
 from swift.rl.ppo import PPOTrainingConfig, PPOTrainingResult, train_ppo_mlp
 from swift.envs import SimpleAvoidanceEnv
 
@@ -32,15 +38,17 @@ class PPOTrainingRunConfig:
 def run_ppo_training_smoke(config: PPOTrainingRunConfig) -> dict[str, Any]:
     base_training_config = _training_config(config)
     writer = ExperimentArtifactWriter(config.settings.artifact)
+    config_hash = _config_hash(config.settings, base_training_config.total_timesteps)
     run_id = build_run_id(
         stage=config.settings.run.stage,
         variant=config.settings.run.variant,
         seed=base_training_config.seed,
-        config_hash=_config_hash(config.settings, base_training_config.total_timesteps),
+        config_hash=config_hash,
         started_at_utc=datetime.now(UTC),
     )
     paths = writer.paths_for(config.settings.run.stage, config.settings.run.variant, run_id)
     output_path = config.output or paths.summary_json
+    manifest_path = _manifest_sidecar_path(output_path) if config.output is not None else paths.manifest_json
     checkpoint_path = paths.checkpoint_dir / checkpoint_filename(
         variant=config.settings.run.variant,
         run_id=run_id,
@@ -67,8 +75,25 @@ def run_ppo_training_smoke(config: PPOTrainingRunConfig) -> dict[str, Any]:
         output_path=output_path,
         history_path=paths.episode_jsonl,
         checkpoint_path=checkpoint_path,
+        manifest_path=manifest_path,
+        config_hash=config_hash,
     )
     writer.write_summary(output_path, summary)
+    writer.write_manifest(
+        manifest_path,
+        build_artifact_manifest(
+            subject_record_type=summary["record_type"],
+            run_id=run_id,
+            stage=config.settings.run.stage,
+            variant=config.settings.run.variant,
+            lineage=summary["lineage"],
+            outputs=[
+                artifact_reference(output_path, role="summary_json"),
+                artifact_reference(paths.episode_jsonl, role="training_history_jsonl"),
+                artifact_reference(checkpoint_path, role="checkpoint"),
+            ],
+        ),
+    )
     return json.loads(Path(output_path).read_text(encoding="utf-8"))
 
 
@@ -108,6 +133,8 @@ def _summary_payload(
     output_path: Path,
     history_path: Path,
     checkpoint_path: Path,
+    manifest_path: Path,
+    config_hash: str,
 ) -> dict[str, Any]:
     training = asdict(result)
     return {
@@ -116,6 +143,10 @@ def _summary_payload(
         "stage": settings.run.stage,
         "variant": settings.run.variant,
         "run_id": run_id,
+        "lineage": {
+            "training_backend": "torch_ppo_mlp",
+            "config_hash": config_hash,
+        },
         "training": training,
         "metrics": {
             "success_rate": training["success_rate"],
@@ -127,6 +158,7 @@ def _summary_payload(
             "summary_json": str(output_path),
             "training_history_jsonl": str(history_path),
             "checkpoint_path": str(checkpoint_path),
+            "manifest_json": str(manifest_path),
         },
     }
 
@@ -134,3 +166,7 @@ def _summary_payload(
 def _config_hash(settings: TrainingSettings, total_timesteps: int) -> str:
     material = repr((settings, total_timesteps)).encode("utf-8")
     return hashlib.sha256(material).hexdigest()
+
+
+def _manifest_sidecar_path(output_path: Path) -> Path:
+    return output_path.with_suffix(".manifest.json")

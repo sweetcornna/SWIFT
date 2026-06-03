@@ -10,8 +10,11 @@ import pytest
 from swift.experiments.artifacts import (
     ExperimentArtifactConfig,
     ExperimentArtifactWriter,
+    artifact_reference,
+    build_artifact_manifest,
     build_run_id,
     checkpoint_filename,
+    file_sha256,
 )
 from swift.experiments.schema import ExperimentMetric
 
@@ -122,6 +125,41 @@ def test_paths_for_keeps_artifacts_under_configured_roots(tmp_path: Path) -> Non
         / "ppo-mlp-contract"
         / "stage-1_ppo-mlp-contract_seed-7_cfg-abcdef12_20260603t040506z"
     )
+    assert paths.manifest_json == (
+        config.experiment_reports
+        / "stage-1"
+        / "ppo-mlp-contract"
+        / "stage-1_ppo-mlp-contract_seed-7_cfg-abcdef12_20260603t040506z.manifest.json"
+    )
+
+
+def test_artifact_manifest_hashes_references_and_writes_strict_json(tmp_path: Path) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    manifest_path = tmp_path / "manifest.json"
+    input_path.write_text('{"seed": 1}\n', encoding="utf-8")
+    output_path.write_text('{"metric": 0.5}\n', encoding="utf-8")
+    writer = ExperimentArtifactWriter()
+
+    manifest = build_artifact_manifest(
+        subject_record_type="ppo_training_smoke",
+        run_id="stage1_ppo_seed-1",
+        stage="stage1",
+        variant="ppo_mlp",
+        inputs=[artifact_reference(input_path, role="config")],
+        outputs=[artifact_reference(output_path, role="summary")],
+        lineage={"config_hash": "abc123"},
+    )
+    writer.write_manifest(manifest_path, manifest)
+
+    written = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert written["record_type"] == "experiment_artifact_manifest"
+    assert written["subject_record_type"] == "ppo_training_smoke"
+    assert written["inputs"][0]["sha256"] == file_sha256(input_path)
+    assert written["outputs"][0]["sha256"] == file_sha256(output_path)
+    assert written["lineage"]["config_hash"] == "abc123"
+    with pytest.raises(FileNotFoundError):
+        artifact_reference(tmp_path / "missing.json", role="missing")
 
 
 def test_schema_includes_stage1_training_metrics() -> None:

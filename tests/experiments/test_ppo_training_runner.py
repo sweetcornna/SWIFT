@@ -39,6 +39,9 @@ def test_ppo_training_smoke_returns_json_safe_summary(tmp_path: Path):
     assert summary["training"]["total_timesteps"] == 128
     assert summary["training"]["updates"] >= 1
     assert summary["artifacts"]["summary_json"] == str(output)
+    assert summary["lineage"]["training_backend"] == "torch_ppo_mlp"
+    manifest_path = Path(summary["artifacts"]["manifest_json"])
+    assert manifest_path.exists()
     history_path = Path(summary["artifacts"]["training_history_jsonl"])
     checkpoint_path = Path(summary["artifacts"]["checkpoint_path"])
     assert history_path.exists()
@@ -46,6 +49,14 @@ def test_ppo_training_smoke_returns_json_safe_summary(tmp_path: Path):
     assert summary["training"]["history_path"] == str(history_path)
     assert summary["training"]["checkpoint_path"] == str(checkpoint_path)
     history = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["record_type"] == "experiment_artifact_manifest"
+    assert manifest["subject_record_type"] == "ppo_training_smoke"
+    assert {reference["role"] for reference in manifest["outputs"]} == {
+        "summary_json",
+        "training_history_jsonl",
+        "checkpoint",
+    }
     assert len(history) == summary["training"]["updates"]
     assert {record["record_type"] for record in history} == {"ppo_update"}
     assert "Infinity" not in raw_summary

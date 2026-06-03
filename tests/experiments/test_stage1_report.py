@@ -89,6 +89,12 @@ def test_stage1_report_merges_training_and_tuning_evidence(tmp_path: Path):
     assert report["evidence"]["ppo_summary_json"] == str(ppo_summary_path)
     assert report["evidence"]["tuning_summary_json"] == str(tuning_summary_path)
     assert report["evidence"]["report_json"] == str(output_path)
+    manifest_path = Path(report["evidence"]["manifest_json"])
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["subject_record_type"] == "stage1_training_tuning_report"
+    assert {reference["role"] for reference in manifest["inputs"]} == {"ppo_summary_json", "tuning_summary_json"}
+    assert {reference["role"] for reference in manifest["outputs"]} == {"report_json"}
     assert "NaN" not in raw_report
     assert "Infinity" not in raw_report
 

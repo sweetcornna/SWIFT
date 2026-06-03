@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from swift.experiments.artifacts import artifact_reference, build_artifact_manifest, ExperimentArtifactWriter
+
 
 def write_stage1_report(
     ppo_summary_path: str | Path,
@@ -23,9 +25,26 @@ def write_stage1_report(
         tuning_summary_path=tuning_path,
         output_path=report_path,
     )
+    manifest_path = report_path.with_suffix(".manifest.json")
+    report["evidence"]["manifest_json"] = str(manifest_path)
     serialized = json.dumps(report, allow_nan=False, sort_keys=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(f"{serialized}\n", encoding="utf-8")
+    ExperimentArtifactWriter().write_manifest(
+        manifest_path,
+        build_artifact_manifest(
+            subject_record_type=report["record_type"],
+            run_id=str(report["training"]["run_id"]),
+            stage=str(report["stage"]),
+            variant=str(report["variant"]),
+            lineage={"ppo_run_id": str(report["training"]["run_id"])},
+            inputs=[
+                artifact_reference(ppo_path, role="ppo_summary_json"),
+                artifact_reference(tuning_path, role="tuning_summary_json"),
+            ],
+            outputs=[artifact_reference(report_path, role="report_json")],
+        ),
+    )
     return json.loads(report_path.read_text(encoding="utf-8"))
 
 
