@@ -11,6 +11,11 @@ domain contracts, documentation, and tests.
 Build the baseline environment loop and PPO+MLP policy path. This is the safe
 demonstrable baseline.
 
+Stage 1 is repo-native first: the baseline smoke exercises SWIFT-owned
+environment, policy, and experiment contracts before training is coupled to any
+external simulator internals. `D:\project\pybullet` remains command-level
+substrate smoke until the environment adapter stabilizes.
+
 ## Stage 2: PPO+HCA Upgrade
 
 Replace flat MLP perception with target and threat attention layers. Preserve

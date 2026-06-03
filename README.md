@@ -17,6 +17,12 @@ python scripts\swift_healthcheck.py
 python scripts\run_pybullet_smoke.py --check-only
 ```
 
+### Stage 1 Baseline Smoke
+
+```powershell
+python scripts\run_baseline_demo.py --episodes 3 --output outputs\baseline\baseline_metrics.json
+```
+
 ## Repository Boundary
 
 - SWIFT owns enterprise project structure and experiment orchestration.

@@ -1,6 +1,11 @@
 import pytest
 
-from swift.envs import BootstrapDroneEnv, UnsupportedOperationError
+from swift.envs import (
+    BootstrapDroneEnv,
+    SimpleAvoidanceEnv,
+    SimpleAvoidanceSettings,
+    UnsupportedOperationError,
+)
 from swift.experiments import ExperimentMetric, ExperimentSpec
 from swift.rl import APFConfig, HCAConfig, PPOConfig
 
@@ -12,6 +17,14 @@ def test_bootstrap_environment_declares_shapes_and_blocks_runtime_use():
     assert env.action_shape == (3,)
     with pytest.raises(UnsupportedOperationError, match="outside bootstrap scope"):
         env.reset()
+
+
+def test_envs_export_bootstrap_and_simple_avoidance_contracts():
+    env = SimpleAvoidanceEnv(SimpleAvoidanceSettings())
+
+    assert BootstrapDroneEnv(observation_size=24, action_size=3).observation_shape == (24,)
+    assert env.observation_shape == (15,)
+    assert env.action_shape == (3,)
 
 
 def test_rl_configs_capture_project_defaults():

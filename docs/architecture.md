@@ -22,3 +22,10 @@ simulation substrate.
 
 The first integration uses command boundaries. Direct Python imports from the
 PyBullet substrate are deferred until SWIFT owns a stable environment API.
+
+## Adapter Boundary
+
+The current PyBullet adapter is a command adapter: it validates the external
+substrate and builds Pixi task commands for smoke checks. The future environment
+adapter will translate SWIFT environment contracts into simulator reset, step,
+and observation calls after the Stage 1 repo-native baseline is stable.
