@@ -1,0 +1,8 @@
+pybullet_root: D:\project\pybullet
+pixi_executable: .tools\pixi\pixi.exe
+required_tasks:
+  - test
+  - drone-demo
+check_task: test
+smoke_task: drone-demo
+command_timeout_seconds: 120

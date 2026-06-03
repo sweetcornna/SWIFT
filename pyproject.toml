@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swift-low-altitude"
+version = "0.1.0"
+description = "Enterprise main repository for an urban drone delivery 3D obstacle avoidance system."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0.2,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2,<9",
+]
+train = [
+  "numpy>=1.26,<3",
+  "torch>=2.12,<3",
+]
+sim = [
+  "gymnasium>=1.2,<2",
+  "numpy>=1.26,<3",
+  "pybullet>=3.2,<4; python_version < '3.14'",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"

@@ -1,0 +1,51 @@
+metrics:
+  - success_rate
+  - collision_rate
+  - average_path_length
+  - path_smoothness
+  - convergence_episodes
+  - minimum_inter_drone_distance
+artifacts:
+  root: outputs
+  episode_logs: outputs\episodes
+  experiment_reports: outputs\reports
+convergence_gate:
+  default_profile: long_training_convergence
+  profiles:
+    cpu_smoke_ablation:
+      convergence_claim_allowed: false
+      required_evidence_level: cpu_smoke_ablation
+      required_variants:
+        - ppo_mlp
+        - ppo_hca
+        - ppo_hca_apf
+      min_success_rate: 0.0
+      max_collision_rate: 1.0
+      max_timeout_rate: 1.0
+      min_seed_count: 1
+      min_total_timesteps: 64
+      min_episodes_completed: 1
+    deterministic_multi_scenario_tuning:
+      convergence_claim_allowed: false
+      required_evidence_level: deterministic_multi_scenario_tuning
+      required_variants:
+        - multi_scenario_policy_tuning
+      min_success_rate: 0.95
+      max_collision_rate: 0.0
+      max_timeout_rate: 0.05
+      min_seed_count: 1
+      min_total_timesteps: 4096
+      min_episodes_completed: 10
+    long_training_convergence:
+      convergence_claim_allowed: true
+      required_evidence_level: long_training_convergence
+      required_variants:
+        - ppo_mlp
+        - ppo_hca
+        - ppo_hca_apf
+      min_success_rate: 0.95
+      max_collision_rate: 0.0
+      max_timeout_rate: 0.05
+      min_seed_count: 3
+      min_total_timesteps: 100000
+      min_episodes_completed: 100
