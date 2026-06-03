@@ -58,6 +58,8 @@ def test_docs_define_evidence_profile_boundaries():
 def test_readme_documents_pybullet_ppo_training_entrypoint():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
+    assert "scripts\\bootstrap.ps1" in text
+    assert "scripts/bootstrap.py" in text
     assert "run_pybullet_ppo_training.py" in text
     assert r"D:\project\.venvs\swift-pybullet-pixi" in text
     assert "pybullet_velocity_training_compatibility" in text
