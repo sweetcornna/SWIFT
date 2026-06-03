@@ -48,6 +48,30 @@ def test_hca_training_smoke_returns_json_safe_summary(tmp_path: Path):
             assert math.isfinite(value)
 
 
+def test_hca_training_smoke_can_enable_apf_fusion(tmp_path: Path):
+    output = tmp_path / "hca_apf_smoke.json"
+    settings = TrainingSettings(
+        ppo=PPOConfig(rollout_steps=32, minibatch_size=16, update_epochs=1),
+        environment=SimpleAvoidanceSettings(goal=(4.0, 0.0, 0.0), max_steps=8),
+        run=TrainingRunSettings(stage="stage2", variant="ppo_hca", seed=3, total_timesteps=64),
+        artifact=ExperimentArtifactConfig(
+            root=tmp_path / "outputs",
+            episode_logs=tmp_path / "episodes",
+            experiment_reports=tmp_path / "reports",
+            checkpoints=tmp_path / "checkpoints",
+        ),
+    )
+
+    summary = run_hca_training_smoke(
+        HCATrainingRunConfig(settings=settings, output=output, enable_apf=True)
+    )
+
+    assert summary["variant"] == "ppo_hca_apf"
+    assert summary["network"]["apf_enabled"] is True
+    assert summary["network"]["apf_config"]["attractive_gain"] == 1.0
+    assert "ppo_hca_apf" in summary["artifacts"]["checkpoint_path"]
+
+
 def test_hca_training_smoke_rejects_non_positive_total_timesteps(tmp_path: Path):
     settings = TrainingSettings(run=TrainingRunSettings(total_timesteps=128))
 

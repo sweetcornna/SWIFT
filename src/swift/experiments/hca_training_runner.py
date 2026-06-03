@@ -10,6 +10,7 @@ import json
 from swift.config import TrainingSettings
 from swift.envs import SimpleAvoidanceEnv
 from swift.experiments.artifacts import ExperimentArtifactWriter, build_run_id, checkpoint_filename
+from swift.rl.apf import APFConfig
 from swift.rl.hca import HCAActorCriticConfig
 from swift.rl.ppo import HCAPPOTrainingConfig, PPOTrainingResult, train_ppo_hca
 
@@ -22,6 +23,7 @@ class HCATrainingRunConfig:
     output: Path | None = None
     stage: str = "stage2"
     variant: str = "ppo_hca"
+    enable_apf: bool = False
 
     def __post_init__(self) -> None:
         if self.total_timesteps is not None and self.total_timesteps <= 0:
@@ -31,7 +33,10 @@ class HCATrainingRunConfig:
         if self.output is not None:
             object.__setattr__(self, "output", Path(self.output))
         object.__setattr__(self, "stage", str(self.stage).strip() or "stage2")
-        object.__setattr__(self, "variant", str(self.variant).strip() or "ppo_hca")
+        variant = str(self.variant).strip() or "ppo_hca"
+        if self.enable_apf and variant == "ppo_hca":
+            variant = "ppo_hca_apf"
+        object.__setattr__(self, "variant", variant)
 
 
 def run_hca_training_smoke(config: HCATrainingRunConfig) -> dict[str, Any]:
@@ -87,6 +92,12 @@ def _training_config(
     rollout_steps = min(config.settings.ppo.rollout_steps, total_timesteps, 64)
     minibatch_size = min(config.settings.ppo.minibatch_size, rollout_steps)
     update_epochs = min(config.settings.ppo.update_epochs, 2)
+    network_config = HCAActorCriticConfig(
+        embedding_dim=16,
+        hidden_sizes=(8,),
+        dropout=0.0,
+        apf_config=APFConfig() if config.enable_apf else None,
+    )
     return HCAPPOTrainingConfig(
         total_timesteps=total_timesteps,
         rollout_steps=rollout_steps,
@@ -100,7 +111,7 @@ def _training_config(
         max_grad_norm=config.settings.ppo.max_grad_norm,
         seed=config.seed if config.seed is not None else config.settings.run.seed,
         torch_num_threads=1,
-        network=HCAActorCriticConfig(embedding_dim=16, hidden_sizes=(8,), dropout=0.0),
+        network=network_config,
         checkpoint_path=checkpoint_path,
         history_path=history_path,
     )
@@ -134,6 +145,8 @@ def _summary_payload(
             "target_attention_heads": 4,
             "threat_attention_heads": 4,
             "hidden_sizes": [8],
+            "apf_enabled": config.enable_apf,
+            "apf_config": asdict(APFConfig()) if config.enable_apf else None,
         },
         "artifacts": {
             "summary_json": str(output_path),

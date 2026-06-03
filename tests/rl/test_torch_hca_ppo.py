@@ -8,6 +8,7 @@ torch = pytest.importorskip("torch")
 
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceEnv, SimpleAvoidanceSettings
+from swift.rl import APFConfig
 from swift.rl.hca import HCAActorCriticConfig
 from swift.rl.ppo import HCAPPOTrainingConfig
 from swift.rl.torch_hca_ppo import (
@@ -65,6 +66,24 @@ def test_hca_feature_extractor_returns_finite_embedding():
 
     assert features.shape == (1, 16)
     assert torch.isfinite(features).all()
+
+
+def test_hca_feature_extractor_fuses_apf_without_expanding_observation():
+    config = HCAActorCriticConfig(
+        embedding_dim=16,
+        target_attention_heads=4,
+        threat_attention_heads=4,
+        apf_config=APFConfig(attractive_gain=0.5, repulsive_gain=0.25),
+    )
+    extractor = HCAFeatureExtractor(config)
+
+    features = extractor(_observation_tensor())
+
+    assert features.shape == (1, 16)
+    assert torch.isfinite(features).all()
+    assert extractor.apf_projection.in_features == 9
+    with pytest.raises(ValueError, match="shape"):
+        extractor(torch.zeros((1, 24), dtype=torch.float32))
 
 
 def test_hca_actor_critic_outputs_actor_value_and_log_std_shapes():

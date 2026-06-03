@@ -133,6 +133,7 @@ class HCAPPOTrainingConfig(PPOConfig):
                     dropout=self.network.dropout,
                     max_heading_delta=self.network.max_heading_delta,
                     log_std_init=self.network.log_std_init,
+                    apf_config=self.network.apf_config,
                 )
             except AttributeError as exc:
                 raise TypeError("network must be an HCAActorCriticConfig") from exc

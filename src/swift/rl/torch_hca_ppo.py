@@ -12,6 +12,7 @@ from torch.nn import functional as F
 
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceSettings
+from swift.rl.apf import APFConfig
 from swift.rl.hca import HCAActorCriticConfig
 from swift.rl.ppo import HCAPPOTrainingConfig, PPOTrainingResult
 from swift.rl.torch_ppo import (
@@ -74,6 +75,10 @@ class HCAFeatureExtractor(nn.Module):
             dropout=self.config.dropout,
             batch_first=True,
         )
+        if self.config.apf_config is None:
+            self.apf_projection = None
+        else:
+            self.apf_projection = nn.Linear(9, embedding_dim)
         self.layer_norm = nn.LayerNorm(embedding_dim)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
@@ -83,7 +88,11 @@ class HCAFeatureExtractor(nn.Module):
         threat_tokens = self.threat_projection(tokens.threat_state).unsqueeze(1)
         target_context, _ = self.target_attention(self_query, target_tokens, target_tokens)
         threat_context, _ = self.threat_attention(target_context, threat_tokens, threat_tokens)
-        fused = self.layer_norm(target_context + threat_context)
+        fused = target_context + threat_context
+        if self.config.apf_config is not None and self.apf_projection is not None:
+            apf_context = self.apf_projection(_apf_feature_tensor(observations, self.config.apf_config)).unsqueeze(1)
+            fused = fused + apf_context
+        fused = self.layer_norm(fused)
         return fused.squeeze(1)
 
 
@@ -269,6 +278,40 @@ def train_ppo_hca(
     if config.checkpoint_path is not None:
         _save_hca_checkpoint(config.checkpoint_path, model, optimizer, config, result)
     return result
+
+
+def _apf_feature_tensor(observations: torch.Tensor, config: APFConfig) -> torch.Tensor:
+    observations = observations.to(dtype=torch.float32)
+    if observations.ndim != 2 or observations.shape[1] != 15:
+        raise ValueError("observations must have shape (batch, 15)")
+
+    relative_goal = observations[:, 7:10]
+    relative_obstacle = observations[:, 10:13]
+    obstacle_radius = observations[:, 13:14]
+
+    attractive = _unit_vectors(relative_goal, epsilon=0.0) * float(config.attractive_gain)
+    obstacle_distance = torch.linalg.vector_norm(relative_obstacle, dim=1, keepdim=True)
+    default_direction = torch.zeros_like(relative_obstacle)
+    default_direction[:, 0] = -1.0
+    direction = torch.where(
+        obstacle_distance <= float(config.epsilon),
+        default_direction,
+        -relative_obstacle / obstacle_distance.clamp_min(float(config.epsilon)),
+    )
+    safety_distance = (obstacle_distance - obstacle_radius).clamp_min(float(config.epsilon))
+    magnitude = float(config.repulsive_gain) * (
+        (1.0 / safety_distance) - (1.0 / float(config.influence_radius))
+    ) / (safety_distance * safety_distance)
+    magnitude = magnitude.clamp_max(float(config.max_repulsive_magnitude))
+    active = (obstacle_radius > 0.0) & (safety_distance < float(config.influence_radius))
+    repulsive = direction * torch.where(active, magnitude, torch.zeros_like(magnitude))
+    combined = attractive + repulsive
+    return torch.cat((attractive, repulsive, combined), dim=1)
+
+
+def _unit_vectors(vectors: torch.Tensor, *, epsilon: float) -> torch.Tensor:
+    norm = torch.linalg.vector_norm(vectors, dim=1, keepdim=True)
+    return torch.where(norm > epsilon, vectors / norm.clamp_min(max(epsilon, 1e-12)), torch.zeros_like(vectors))
 
 
 def _collect_rollout(

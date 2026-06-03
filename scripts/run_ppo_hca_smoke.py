@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=ROOT / "outputs" / "training" / "ppo_hca_smoke.json",
     )
+    parser.add_argument("--enable-apf", action="store_true", help="Fuse deterministic APF features into HCA.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -37,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
             total_timesteps=args.total_timesteps,
             seed=args.seed,
             output=args.output,
+            enable_apf=args.enable_apf,
         )
     )
     print(f"SWIFT PPO HCA smoke written: {args.output}")

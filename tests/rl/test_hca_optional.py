@@ -17,6 +17,7 @@ def test_hca_public_configs_do_not_import_torch_backend_eagerly():
 
 
 def test_hca_actor_critic_config_validates_shapes_heads_and_dropout():
+    from swift.rl import APFConfig
     from swift.rl.hca import HCAActorCriticConfig, HCAObservationAdapterConfig
 
     observation = HCAObservationAdapterConfig()
@@ -33,6 +34,14 @@ def test_hca_actor_critic_config_validates_shapes_heads_and_dropout():
     assert observation.target_dim == 4
     assert observation.threat_dim == 4
     assert config.embedding_dim == 16
+    apf_config = HCAActorCriticConfig(
+        embedding_dim=16,
+        hidden_sizes=(8,),
+        apf_config=APFConfig(attractive_gain=0.5, repulsive_gain=0.25),
+    )
+    assert apf_config.apf_config == APFConfig(attractive_gain=0.5, repulsive_gain=0.25)
+    assert apf_config.observation.observation_dim == 15
+    assert "swift.rl.torch_hca_ppo" not in sys.modules
     with pytest.raises(ValueError, match="observation_dim"):
         HCAObservationAdapterConfig(observation_dim=14)
     with pytest.raises(ValueError, match="target_attention_heads"):

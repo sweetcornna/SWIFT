@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from swift.rl.apf import APFConfig
+
 
 @dataclass(frozen=True)
 class HCAConfig:
@@ -47,6 +49,7 @@ class HCAActorCriticConfig:
     dropout: float = 0.0
     max_heading_delta: float = 0.5
     log_std_init: float = -0.5
+    apf_config: APFConfig | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, HCAObservationAdapterConfig):
@@ -77,6 +80,18 @@ class HCAActorCriticConfig:
         _set_probability(self, "dropout", self.dropout)
         _set_positive_float(self, "max_heading_delta", self.max_heading_delta)
         _set_finite_float(self, "log_std_init", self.log_std_init)
+        if self.apf_config is not None and not isinstance(self.apf_config, APFConfig):
+            try:
+                apf_config = APFConfig(
+                    attractive_gain=self.apf_config.attractive_gain,
+                    repulsive_gain=self.apf_config.repulsive_gain,
+                    influence_radius=self.apf_config.influence_radius,
+                    max_repulsive_magnitude=self.apf_config.max_repulsive_magnitude,
+                    epsilon=self.apf_config.epsilon,
+                )
+            except AttributeError as exc:
+                raise TypeError("apf_config must be an APFConfig") from exc
+            object.__setattr__(self, "apf_config", apf_config)
 
 
 def _set_exact_int(instance: object, name: str, value: int, expected: int) -> None:
