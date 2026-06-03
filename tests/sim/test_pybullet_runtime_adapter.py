@@ -1,4 +1,5 @@
 import math
+import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -11,6 +12,8 @@ from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceSettings
 from swift.sim.pybullet_runtime import (
     PyBulletRuntimeUnavailableError,
     PyBulletVelocityRuntimeEnv,
+    _pixi_windows_runtime_directories,
+    _prepare_windows_pixi_runtime,
     build_pybullet_drones_path,
     drone_action_to_velocity_command,
 )
@@ -31,6 +34,31 @@ def test_build_pybullet_drones_path_uses_external_substrate_root(tmp_path: Path)
     expected = tmp_path / "external" / "gym-pybullet-drones"
 
     assert build_pybullet_drones_path(make_settings(tmp_path)) == expected
+
+
+def test_pixi_windows_runtime_directories_include_dll_search_paths(tmp_path: Path):
+    pixi_env = tmp_path / ".pixi" / "envs" / "default"
+    expected = (pixi_env, pixi_env / "Library" / "bin", pixi_env / "Scripts")
+    for path in expected:
+        path.mkdir(parents=True)
+
+    assert _pixi_windows_runtime_directories(make_settings(tmp_path)) == expected
+
+
+def test_prepare_windows_pixi_runtime_prepends_existing_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    pixi_env = tmp_path / ".pixi" / "envs" / "default"
+    expected = (pixi_env, pixi_env / "Library" / "bin", pixi_env / "Scripts")
+    for path in expected:
+        path.mkdir(parents=True)
+    monkeypatch.setenv("PATH", r"C:\existing")
+
+    _prepare_windows_pixi_runtime(make_settings(tmp_path))
+
+    raw_parts = tuple(Path(part) for part in os.environ["PATH"].split(";") if part)
+    assert raw_parts[:3] == expected
 
 
 def test_runtime_env_rejects_missing_vendored_path(tmp_path: Path):
@@ -121,6 +149,8 @@ def test_runtime_env_detects_headless_pybullet_contacts(tmp_path: Path, monkeypa
     assert reset_info["minimum_safety_distance"] == pytest.approx(-0.025)
     assert reset_info["nearest_obstacle_body_id"] == 2
     assert reset_info["nearest_obstacle_radius"] == pytest.approx(0.2)
+    assert fake_pybullet.closest_query_distances
+    assert max(fake_pybullet.closest_query_distances) == pytest.approx(10.0)
     assert step_info["contact_count"] == 1
     assert step_info["collided"] is True
     assert step_info["minimum_safety_distance"] == pytest.approx(-0.025)
@@ -582,6 +612,9 @@ class FakeContactVelocityAviary(FakeVelocityAviary):
 
 
 class FakePyBulletContacts:
+    def __init__(self) -> None:
+        self.closest_query_distances = []
+
     def getNumBodies(self, physicsClientId=None):
         assert physicsClientId == 123
         return 3
@@ -596,6 +629,7 @@ class FakePyBulletContacts:
         assert bodyA == 1
         assert bodyB == 2
         assert physicsClientId == 123
+        self.closest_query_distances.append(float(distance))
         return [(0, bodyA, bodyB, -1, -1, (0, 0, 0), (0, 0, 0), (0, 0, 1), -0.025, 3.0)]
 
     def getBasePositionAndOrientation(self, bodyUniqueId=None, physicsClientId=None):

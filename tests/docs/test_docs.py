@@ -53,3 +53,11 @@ def test_docs_define_evidence_profile_boundaries():
     assert "cpu_smoke_ablation is not convergence evidence" in combined
     assert "deterministic_multi_scenario_tuning is not convergence evidence" in combined
     assert "only long_training_convergence may support a convergence claim" in combined
+
+
+def test_readme_documents_pybullet_ppo_training_entrypoint():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "run_pybullet_ppo_training.py" in text
+    assert r"D:\project\.venvs\swift-pybullet-pixi" in text
+    assert "pybullet_velocity_training_compatibility" in text

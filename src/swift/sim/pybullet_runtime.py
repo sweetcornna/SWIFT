@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,6 +13,10 @@ from swift.core import DroneAction, ObstacleState
 
 class PyBulletRuntimeUnavailableError(RuntimeError):
     """Raised when the optional PyBullet runtime substrate is unavailable."""
+
+
+_DLL_DIRECTORY_HANDLES: list[Any] = []
+_CONTACT_QUERY_DISTANCE_METERS = 10.0
 
 
 def build_pybullet_drones_path(settings: SimulationSettings) -> Path:
@@ -109,6 +114,7 @@ class PyBulletVelocityRuntimeEnv:
             raise PyBulletRuntimeUnavailableError(f"gym-pybullet-drones path not found: {vendored_path}")
         if str(vendored_path) not in sys.path:
             sys.path.insert(0, str(vendored_path))
+        _prepare_windows_pixi_runtime(settings)
 
         try:
             from gym_pybullet_drones.envs.VelocityAviary import VelocityAviary
@@ -146,7 +152,7 @@ class PyBulletVelocityRuntimeEnv:
                 for point in p.getClosestPoints(
                     bodyA=drone_id,
                     bodyB=obstacle_id,
-                    distance=1_000_000.0,
+                    distance=_CONTACT_QUERY_DISTANCE_METERS,
                     physicsClientId=client,
                 ):
                     closest_distances.append((float(point[8]), obstacle_id))
@@ -314,6 +320,49 @@ def _action_array(command: list[list[float]]) -> Any:
     except ImportError:
         return command
     return np.array(command, dtype=np.float32)
+
+
+def _prepare_windows_pixi_runtime(settings: SimulationSettings) -> None:
+    if sys.platform != "win32":
+        return
+    directories = _pixi_windows_runtime_directories(settings)
+    if not directories:
+        return
+    _prepend_path_entries(directories)
+    add_dll_directory = getattr(os, "add_dll_directory", None)
+    if add_dll_directory is None:
+        return
+    for directory in directories:
+        try:
+            handle = add_dll_directory(str(directory))
+        except OSError:
+            continue
+        _DLL_DIRECTORY_HANDLES.append(handle)
+
+
+def _pixi_windows_runtime_directories(settings: SimulationSettings) -> tuple[Path, ...]:
+    pixi_env = settings.pybullet_root / ".pixi" / "envs" / "default"
+    candidates = (pixi_env, pixi_env / "Library" / "bin", pixi_env / "Scripts")
+    return tuple(path for path in candidates if path.is_dir())
+
+
+def _prepend_path_entries(directories: Sequence[Path]) -> None:
+    current_parts = [part for part in os.environ.get("PATH", "").split(os.pathsep) if part]
+    normalized_existing = {_normalized_path(part) for part in current_parts}
+    new_parts: list[str] = []
+    for directory in directories:
+        raw = str(directory)
+        normalized = _normalized_path(raw)
+        if normalized in normalized_existing:
+            continue
+        new_parts.append(raw)
+        normalized_existing.add(normalized)
+    if new_parts:
+        os.environ["PATH"] = os.pathsep.join([*new_parts, *current_parts])
+
+
+def _normalized_path(value: str | Path) -> str:
+    return os.path.normcase(os.path.abspath(str(value)))
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:

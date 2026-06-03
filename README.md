@@ -43,6 +43,34 @@ checkpoint evaluation:
 python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json
 ```
 
+### PyBullet-Backed PPO Training
+
+Use the local PyBullet substrate at `D:\project\pybullet` through the
+`PyBulletVelocityTrainingEnv` adapter. On this Windows setup, the current
+project Python can run Torch but cannot import PyBullet directly, while the
+PyBullet Pixi environment has the simulator stack but no Torch. The supported
+local training environment is therefore an external venv created from the Pixi
+Python with system site packages, then extended with SWIFT and Torch:
+
+```powershell
+D:\project\pybullet\.pixi\envs\default\python.exe -m venv --system-site-packages D:\project\.venvs\swift-pybullet-pixi
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe -m pip install --upgrade pip
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe -m pip install -e D:\project\SWIFT torch PyYAML
+```
+
+The runtime adapter automatically registers the Pixi DLL search directories on
+Windows before importing `VelocityAviary`. A 32-step pilot writes a JSON summary,
+training-history JSONL, checkpoint, and manifest:
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ppo_training.py --total-timesteps 32 --seed 0 --output outputs\training\pybullet_pilot_32.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ppo_training.py --total-timesteps 32 --seed 1 --enable-obstacles --output outputs\training\pybullet_obstacles_pilot_32.json
+```
+
+Successful reports use `record_type=pybullet_ppo_training_report`,
+`training_backend=torch_ppo_mlp_pybullet_velocity`, and
+`runtime_contract=pybullet_velocity_training_compatibility`.
+
 APF feature generation is available through `swift.rl.apf_features_from_observation(...)`
 as a 9D attraction/repulsion/combined-force vector for later HCA+APF fusion.
 PPO+HCA smoke training is available through `scripts\run_ppo_hca_smoke.py` and

@@ -13,6 +13,10 @@ from swift.experiments.ppo_checkpoint_evaluator import (
     PPOCheckpointEvaluationConfig,
     run_ppo_checkpoint_evaluation,
 )
+from swift.experiments.pybullet_training_runner import (
+    PyBulletPPOTrainingRunConfig,
+    run_pybullet_ppo_training,
+)
 from swift.experiments.schema import ExperimentMetric, ExperimentSpec
 from swift.experiments.stage1_report import build_stage1_report, write_stage1_report
 from swift.experiments.tuning_runner import (
@@ -32,6 +36,7 @@ __all__ = [
     "ExperimentSpec",
     "PolicySearchSpace",
     "PPOCheckpointEvaluationConfig",
+    "PyBulletPPOTrainingRunConfig",
     "Stage1Scenario",
     "TuningRunConfig",
     "artifact_reference",
@@ -43,6 +48,7 @@ __all__ = [
     "file_sha256",
     "run_baseline_episodes",
     "run_ppo_checkpoint_evaluation",
+    "run_pybullet_ppo_training",
     "run_stage1_policy_search",
     "write_stage1_report",
 ]

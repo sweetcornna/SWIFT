@@ -57,3 +57,14 @@ def test_pyproject_declares_sim_extra_for_optional_pybullet_runtime():
     assert any(dependency.startswith("gymnasium") for dependency in sim_extra)
     assert any(dependency.startswith("pybullet") for dependency in sim_extra)
     assert any(dependency.startswith("numpy") for dependency in sim_extra)
+
+
+def test_training_and_sim_extras_allow_pybullet_pixi_numpy_contract():
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    optional_dependencies = pyproject["project"]["optional-dependencies"]
+    train_numpy = [dependency for dependency in optional_dependencies["train"] if dependency.startswith("numpy")]
+    sim_numpy = [dependency for dependency in optional_dependencies["sim"] if dependency.startswith("numpy")]
+
+    assert train_numpy == ["numpy>=1.26,<3"]
+    assert sim_numpy == ["numpy>=1.26,<3"]
