@@ -10,11 +10,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from swift.config import load_simulation_settings, load_training_settings  # noqa: E402
-from swift.experiments.pybullet_training_runner import (  # noqa: E402
-    PyBulletPPOTrainingRunConfig,
-    run_pybullet_ppo_training,
-)
-from swift.sim import PyBulletRuntimeUnavailableError  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,13 +22,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "outputs" / "training" / "pybullet_ppo_training.json",
+        default=None,
+        help="Optional summary JSON path. Omit to use a run-id artifact path.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     training_settings = load_training_settings(args.training_config)
     simulation_settings = load_simulation_settings(args.simulation_config)
+    if args.dry_run:
+        print(
+            "SWIFT PyBullet PPO training config OK: "
+            f"training={args.training_config} simulation={args.simulation_config}"
+        )
+        return 0
+
+    PyBulletPPOTrainingRunConfig, run_pybullet_ppo_training = _load_runner()
     run_config = PyBulletPPOTrainingRunConfig(
         training_settings=training_settings,
         simulation_settings=simulation_settings,
@@ -42,25 +46,35 @@ def main(argv: list[str] | None = None) -> int:
         output=args.output,
         enable_pybullet_obstacles=args.enable_obstacles,
     )
-    if args.dry_run:
-        print(
-            "SWIFT PyBullet PPO training config OK: "
-            f"training={args.training_config} simulation={args.simulation_config}"
-        )
-        return 0
 
+    PyBulletRuntimeUnavailableError = _load_runtime_unavailable_error()
     try:
         result = run_pybullet_ppo_training(run_config)
     except PyBulletRuntimeUnavailableError as exc:
         print(f"PyBullet runtime unavailable: {exc}")
         return 2
 
-    print(f"SWIFT PyBullet PPO training written: {args.output}")
+    print(f"SWIFT PyBullet PPO training written: {result['artifacts']['summary_json']}")
     print(
         f"updates={result['training']['updates']} total_timesteps={result['training']['total_timesteps']} "
         f"runtime_contract={result['runtime']['runtime_contract']}"
     )
     return 0
+
+
+def _load_runner():
+    from swift.experiments.pybullet_training_runner import (
+        PyBulletPPOTrainingRunConfig,
+        run_pybullet_ppo_training,
+    )
+
+    return PyBulletPPOTrainingRunConfig, run_pybullet_ppo_training
+
+
+def _load_runtime_unavailable_error():
+    from swift.sim import PyBulletRuntimeUnavailableError
+
+    return PyBulletRuntimeUnavailableError
 
 
 if __name__ == "__main__":

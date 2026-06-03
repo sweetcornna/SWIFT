@@ -69,7 +69,9 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_pp
 
 Successful reports use `record_type=pybullet_ppo_training_report`,
 `training_backend=torch_ppo_mlp_pybullet_velocity`, and
-`runtime_contract=pybullet_velocity_training_compatibility`.
+`runtime_contract=pybullet_velocity_training_compatibility`. Omit `--output`
+when you want the summary and manifest to use run-id artifact paths instead of
+a fixed report path.
 
 APF feature generation is available through `swift.rl.apf_features_from_observation(...)`
 as a 9D attraction/repulsion/combined-force vector for later HCA+APF fusion.

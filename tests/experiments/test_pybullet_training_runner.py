@@ -74,6 +74,9 @@ def test_pybullet_ppo_training_writes_runtime_contract_summary(tmp_path: Path):
         "training_history_jsonl",
         "checkpoint",
     }
+    for reference in manifest["outputs"]:
+        assert len(reference["sha256"]) == 64
+        assert reference["bytes"] > 0
     assert "Infinity" not in output.read_text(encoding="utf-8")
     assert "NaN" not in output.read_text(encoding="utf-8")
     for value in summary["training"].values():

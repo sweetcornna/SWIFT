@@ -13,10 +13,6 @@ from swift.experiments.ppo_checkpoint_evaluator import (
     PPOCheckpointEvaluationConfig,
     run_ppo_checkpoint_evaluation,
 )
-from swift.experiments.pybullet_training_runner import (
-    PyBulletPPOTrainingRunConfig,
-    run_pybullet_ppo_training,
-)
 from swift.experiments.schema import ExperimentMetric, ExperimentSpec
 from swift.experiments.stage1_report import build_stage1_report, write_stage1_report
 from swift.experiments.tuning_runner import (
@@ -52,3 +48,18 @@ __all__ = [
     "run_stage1_policy_search",
     "write_stage1_report",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"PyBulletPPOTrainingRunConfig", "run_pybullet_ppo_training"}:
+        from swift.experiments.pybullet_training_runner import (
+            PyBulletPPOTrainingRunConfig,
+            run_pybullet_ppo_training,
+        )
+
+        exports = {
+            "PyBulletPPOTrainingRunConfig": PyBulletPPOTrainingRunConfig,
+            "run_pybullet_ppo_training": run_pybullet_ppo_training,
+        }
+        return exports[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

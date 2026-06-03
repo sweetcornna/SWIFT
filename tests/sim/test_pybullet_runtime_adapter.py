@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import swift.sim.pybullet_runtime as pybullet_runtime
 from swift.config import SimulationSettings
 from swift.core import DroneAction, ObstacleState
 from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceSettings
@@ -59,6 +60,32 @@ def test_prepare_windows_pixi_runtime_prepends_existing_paths(
 
     raw_parts = tuple(Path(part) for part in os.environ["PATH"].split(";") if part)
     assert raw_parts[:3] == expected
+
+
+def test_prepare_windows_pixi_runtime_retains_dll_directory_handles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    pixi_env = tmp_path / ".pixi" / "envs" / "default"
+    expected = (pixi_env, pixi_env / "Library" / "bin", pixi_env / "Scripts")
+    for path in expected:
+        path.mkdir(parents=True)
+    handles = [object(), object(), object()]
+    registered = []
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("PATH", r"C:\existing")
+    pybullet_runtime._DLL_DIRECTORY_HANDLES.clear()
+
+    def fake_add_dll_directory(path):
+        registered.append(Path(path))
+        return handles[len(registered) - 1]
+
+    monkeypatch.setattr(os, "add_dll_directory", fake_add_dll_directory)
+
+    _prepare_windows_pixi_runtime(make_settings(tmp_path))
+
+    assert tuple(registered) == expected
+    assert pybullet_runtime._DLL_DIRECTORY_HANDLES == handles
 
 
 def test_runtime_env_rejects_missing_vendored_path(tmp_path: Path):
@@ -392,6 +419,8 @@ def test_runtime_env_injects_and_tracks_swift_configured_obstacle_bodies(
     assert fake_pybullet.collision_shapes == [(0.4, 123)]
     assert fake_pybullet.multi_bodies == [(900, (2.0, 3.0, 4.0), 123)]
     assert fake_pybullet.contact_queries == [(1, 900, 123)]
+    assert fake_pybullet.closest_query_distances
+    assert max(fake_pybullet.closest_query_distances) == pytest.approx(10.0)
     assert reset_info["nearest_obstacle_body_id"] == 900
     assert reset_info["nearest_obstacle_relative"] == pytest.approx((1.0, 1.0, 1.0))
     assert reset_info["nearest_obstacle_radius"] == pytest.approx(0.4)
@@ -652,6 +681,7 @@ class FakePyBulletSwiftObstacles(FakePyBulletContacts):
     GEOM_SPHERE = 2
 
     def __init__(self) -> None:
+        self.closest_query_distances = []
         self.collision_shapes = []
         self.multi_bodies = []
         self.contact_queries = []
@@ -686,6 +716,7 @@ class FakePyBulletSwiftObstacles(FakePyBulletContacts):
         assert bodyA == 1
         assert bodyB in {900, 901}
         assert physicsClientId == 123
+        self.closest_query_distances.append(float(distance))
         return [(0, bodyA, bodyB, -1, -1, (0, 0, 0), (0, 0, 0), (0, 0, 1), 0.6, 3.0)]
 
     def getBasePositionAndOrientation(self, bodyUniqueId=None, physicsClientId=None):
