@@ -7,6 +7,7 @@ from typing import Any
 
 from swift.core import ObstacleState
 from swift.envs import SimpleAvoidanceEnv, SimpleAvoidanceSettings
+from swift.rl.apf import APFConfig, apf_features_from_observation
 from swift.rl.mlp_baseline import MLPBaselinePolicy, MLPBaselinePolicyConfig
 
 
@@ -66,7 +67,7 @@ class TuningRunConfig:
 def evaluate_policy(
     settings: SimpleAvoidanceSettings,
     policy_config: MLPBaselinePolicyConfig,
-) -> dict[str, bool | float | int]:
+) -> dict[str, object]:
     config = _coerce_policy_config(policy_config)
     env_settings = settings.replace(max_speed=config.max_speed, max_climb_rate=config.max_climb_rate)
     env = SimpleAvoidanceEnv(env_settings)
@@ -81,6 +82,7 @@ def evaluate_policy(
         observation, _, terminated, truncated, info = env.step(action)
 
     metrics = info["episode_metrics"]
+    apf_features = _apf_feature_dict(observation)
     return {
         "success": bool(metrics.success),
         "collided": bool(metrics.collided),
@@ -89,6 +91,7 @@ def evaluate_policy(
         "path_length": float(metrics.path_length),
         "path_smoothness": float(metrics.path_smoothness),
         "minimum_safety_distance": float(metrics.minimum_safety_distance),
+        "apf": apf_features,
     }
 
 
@@ -130,7 +133,9 @@ def _candidate_result(
     policy_config: MLPBaselinePolicyConfig,
     minimum_safety_distance: float,
 ) -> dict[str, object]:
-    metrics = evaluate_policy(settings, policy_config)
+    evaluation = evaluate_policy(settings, policy_config)
+    apf = evaluation.pop("apf")
+    metrics = evaluation
     accepted = (
         bool(metrics["success"])
         and not bool(metrics["collided"])
@@ -140,6 +145,7 @@ def _candidate_result(
     return {
         "config": _policy_config_dict(policy_config),
         "metrics": metrics,
+        "apf": apf,
         "accepted": accepted,
     }
 
@@ -214,6 +220,17 @@ def _obstacle_dict(obstacle: ObstacleState) -> dict[str, object]:
         "position": list(obstacle.position),
         "radius": float(obstacle.radius),
         "velocity": list(obstacle.velocity),
+    }
+
+
+def _apf_feature_dict(observation: tuple[float, ...]) -> dict[str, object]:
+    features = apf_features_from_observation(observation, APFConfig())
+    return {
+        "attractive": list(features.attractive),
+        "repulsive": list(features.repulsive),
+        "combined": list(features.combined),
+        "combined_norm": math.sqrt(sum(value * value for value in features.combined)),
+        "as_tuple": list(features.as_tuple()),
     }
 
 

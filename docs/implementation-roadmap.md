@@ -37,6 +37,9 @@ the PPO baseline as the comparison target.
 
 Embed APF attraction and repulsion vectors into the HCA perception flow. Measure
 convergence speed, success rate, path smoothness, and minimum safety distance.
+The current APF slice provides deterministic 9D attraction, repulsion, and
+combined-force features derived from the existing 15D observation contract,
+without changing PPO input dimensions.
 
 ## Stage 4: Multi-Scenario Evaluation
 

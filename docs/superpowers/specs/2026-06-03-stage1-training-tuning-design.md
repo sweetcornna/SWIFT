@@ -54,7 +54,14 @@ consumable evidence, not only saved files.
 `MLPBaselinePolicy` across a fixed obstacle scenario and grid. The default
 policy collides in that scenario; the tuned candidate must succeed without
 regressing the no-obstacle baseline. `scripts/run_stage1_tuning.py` writes the
-full tuning report.
+full tuning report. The tuning report also records deterministic APF feature
+evidence derived from the existing 15D observation contract.
+
+### APF Feature Contract
+
+`src/swift/rl/apf.py` derives a strict 9D APF feature vector from the current
+15D observation: attraction, repulsion, and combined force. This prepares the
+HCA+APF fusion path without changing Stage 1 PPO input dimensions.
 
 ### Stage 1 Report CLI
 

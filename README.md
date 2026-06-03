@@ -42,6 +42,9 @@ checkpoint evaluation:
 python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json
 ```
 
+APF feature generation is available through `swift.rl.apf_features_from_observation(...)`
+as a 9D attraction/repulsion/combined-force vector for later HCA+APF fusion.
+
 ## Repository Boundary
 
 - SWIFT owns enterprise project structure and experiment orchestration.

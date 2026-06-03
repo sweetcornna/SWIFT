@@ -37,6 +37,10 @@ def test_stage1_policy_search_finds_accepted_successful_candidate():
     assert result["best_candidate"]["metrics"]["collided"] is False
     assert result["best_candidate"]["metrics"]["timed_out"] is False
     assert result["best_candidate"]["metrics"]["minimum_safety_distance"] >= result["acceptance"]["minimum_safety_distance"]
+    assert len(result["baseline"]["apf"]["combined"]) == 3
+    assert result["baseline"]["apf"]["combined_norm"] > 0.0
+    assert len(result["best_candidate"]["apf"]["as_tuple"]) == 9
+    assert all(math.isfinite(value) for value in result["best_candidate"]["apf"]["as_tuple"])
     assert result["best_candidate"]["config"]
 
     expected_config = {

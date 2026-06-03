@@ -1,4 +1,10 @@
-from swift.rl.apf import APFConfig
+from swift.rl.apf import (
+    APFConfig,
+    APFFeatureVector,
+    apf_features_from_observation,
+    attractive_force,
+    repulsive_force,
+)
 from swift.rl.hca import HCAConfig
 from swift.rl.mlp_baseline import MLPBaselinePolicy, MLPBaselinePolicyConfig
 from swift.rl.ppo import (
@@ -12,6 +18,7 @@ from swift.rl.ppo import (
 
 __all__ = [
     "APFConfig",
+    "APFFeatureVector",
     "HCAConfig",
     "MLPActorCriticConfig",
     "MLPBaselinePolicy",
@@ -20,5 +27,8 @@ __all__ = [
     "PPOTrainingConfig",
     "PPOTrainingResult",
     "TorchUnavailableError",
+    "apf_features_from_observation",
+    "attractive_force",
+    "repulsive_force",
     "train_ppo_mlp",
 ]
