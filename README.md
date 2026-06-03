@@ -29,7 +29,11 @@ python scripts\run_baseline_demo.py --episodes 3 --output outputs\baseline\basel
 python -m pip install -e ".[dev,train]"
 python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json
 python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json
+python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json
 ```
+
+The PPO smoke also writes an update-by-update training history JSONL under
+`outputs\episodes\...` and a resumable checkpoint under `checkpoints\...`.
 
 ## Repository Boundary
 

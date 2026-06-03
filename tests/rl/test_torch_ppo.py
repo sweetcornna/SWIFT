@@ -1,4 +1,6 @@
+import json
 import math
+from pathlib import Path
 
 import pytest
 
@@ -91,3 +93,68 @@ def test_train_ppo_mlp_runs_tiny_cpu_update_and_reports_finite_metrics():
         result.final_entropy,
     ):
         assert math.isfinite(metric)
+
+
+def test_train_ppo_mlp_writes_checkpoint_and_update_history(tmp_path: Path):
+    def make_env():
+        return SimpleAvoidanceEnv(SimpleAvoidanceSettings(max_steps=8, goal=(4.0, 0.0, 0.0)))
+
+    checkpoint_path = tmp_path / "checkpoints" / "ppo.pt"
+    history_path = tmp_path / "history" / "updates.jsonl"
+
+    result = train_ppo_mlp(
+        make_env,
+        PPOTrainingConfig(
+            total_timesteps=64,
+            rollout_steps=32,
+            minibatch_size=16,
+            update_epochs=1,
+            torch_num_threads=1,
+            seed=123,
+            network=MLPActorCriticConfig(hidden_sizes=(8,)),
+            checkpoint_path=checkpoint_path,
+            history_path=history_path,
+        ),
+    )
+
+    assert result.checkpoint_path == str(checkpoint_path)
+    assert result.history_path == str(history_path)
+
+    raw_history = history_path.read_text(encoding="utf-8")
+    assert "NaN" not in raw_history
+    assert "Infinity" not in raw_history
+    assert raw_history.endswith("\n")
+    history_lines = raw_history.splitlines()
+    history = [json.loads(line) for line in history_lines]
+    assert len(history) == result.updates
+    assert [record["update"] for record in history] == list(range(1, result.updates + 1))
+    for line, record in zip(history_lines, history, strict=True):
+        assert json.dumps(record, allow_nan=False, sort_keys=True) == line
+        assert record["record_type"] == "ppo_update"
+        assert record["total_timesteps"] > 0
+        assert record["episodes_completed"] >= 0
+        for metric in ("policy_loss", "value_loss", "entropy", "average_episode_return"):
+            assert math.isfinite(record[metric])
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    assert {
+        "schema_version",
+        "record_type",
+        "model_state_dict",
+        "optimizer_state_dict",
+        "rng_state",
+        "network_config",
+        "training_config",
+        "result",
+    } <= set(checkpoint)
+    assert checkpoint["schema_version"] == 1
+    assert checkpoint["record_type"] == "ppo_checkpoint"
+    assert checkpoint["training_config"]["total_timesteps"] == 64
+    assert checkpoint["training_config"]["network"]["hidden_sizes"] == [8]
+    assert checkpoint["training_config"]["checkpoint_path"] == str(checkpoint_path)
+    assert checkpoint["training_config"]["history_path"] == str(history_path)
+    assert checkpoint["result"]["updates"] == result.updates
+    assert "actor_head.weight" in checkpoint["model_state_dict"]
+    assert "state" in checkpoint["optimizer_state_dict"]
+    assert "torch_cpu" in checkpoint["rng_state"]
+    assert isinstance(checkpoint["rng_state"]["python"], tuple)

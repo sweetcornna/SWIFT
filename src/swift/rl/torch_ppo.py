@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+import json
+import math
+from pathlib import Path
 import random
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -112,6 +116,8 @@ def train_ppo_mlp(
     final_policy_loss = 0.0
     final_value_loss = 0.0
     final_entropy = 0.0
+    if config.history_path is not None:
+        _prepare_jsonl(config.history_path)
 
     while total_timesteps < config.total_timesteps:
         rollout_length = min(config.rollout_steps, config.total_timesteps - total_timesteps)
@@ -189,8 +195,26 @@ def train_ppo_mlp(
                 final_value_loss = float(value_loss.detach().item())
                 final_entropy = float(entropy_loss.detach().item())
         updates += 1
+        if config.history_path is not None:
+            _append_history(
+                config.history_path,
+                {
+                    "schema_version": 1,
+                    "record_type": "ppo_update",
+                    "update": updates,
+                    "total_timesteps": total_timesteps,
+                    "episodes_completed": episodes_completed,
+                    "success_rate": _rate(successes, episodes_completed),
+                    "collision_rate": _rate(collisions, episodes_completed),
+                    "timeout_rate": _rate(timeouts, episodes_completed),
+                    "average_episode_return": _rate_sum(episode_returns),
+                    "policy_loss": final_policy_loss,
+                    "value_loss": final_value_loss,
+                    "entropy": final_entropy,
+                },
+            )
 
-    return PPOTrainingResult(
+    result = PPOTrainingResult(
         total_timesteps=total_timesteps,
         updates=updates,
         episodes_completed=episodes_completed,
@@ -201,7 +225,12 @@ def train_ppo_mlp(
         final_policy_loss=final_policy_loss,
         final_value_loss=final_value_loss,
         final_entropy=final_entropy,
+        checkpoint_path=str(config.checkpoint_path) if config.checkpoint_path is not None else None,
+        history_path=str(config.history_path) if config.history_path is not None else None,
     )
+    if config.checkpoint_path is not None:
+        _save_checkpoint(config.checkpoint_path, model, optimizer, config, result)
+    return result
 
 
 def _collect_rollout(
@@ -336,3 +365,68 @@ def _rate_sum(values: Sequence[float]) -> float:
     if not values:
         return 0.0
     return float(sum(values)) / float(len(values))
+
+
+def _prepare_jsonl(path: str | Path) -> None:
+    jsonl_path = Path(path)
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    jsonl_path.write_text("", encoding="utf-8")
+
+
+def _append_history(path: str | Path, record: dict[str, Any]) -> None:
+    _assert_json_safe(record)
+    serialized = json.dumps(record, allow_nan=False, sort_keys=True)
+    jsonl_path = Path(path)
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    with jsonl_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"{serialized}\n")
+
+
+def _save_checkpoint(
+    path: str | Path,
+    model: MLPActorCritic,
+    optimizer: torch.optim.Optimizer,
+    config: PPOTrainingConfig,
+    result: PPOTrainingResult,
+) -> None:
+    checkpoint_path = Path(path)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "schema_version": 1,
+            "record_type": "ppo_checkpoint",
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "rng_state": {
+                "python": random.getstate(),
+                "torch_cpu": torch.get_rng_state(),
+            },
+            "network_config": _json_ready(asdict(config.network)),
+            "training_config": _json_ready(asdict(config)),
+            "result": _json_ready(asdict(result)),
+        },
+        checkpoint_path,
+    )
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, tuple):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    return value
+
+
+def _assert_json_safe(value: Any) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("history contains a non-finite float")
+    if isinstance(value, dict):
+        for item in value.values():
+            _assert_json_safe(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _assert_json_safe(item)

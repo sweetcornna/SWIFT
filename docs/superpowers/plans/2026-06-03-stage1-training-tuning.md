@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a real CPU PPO+MLP training smoke, strict experiment artifacts, and deterministic Stage 1 tuning that proves an obstacle collision can be tuned into success.
+**Goal:** Add a real CPU PPO+MLP training smoke, strict experiment artifacts, checkpoint/history evidence, and deterministic Stage 1 tuning that proves an obstacle collision can be tuned into success.
 
 **Architecture:** Public RL APIs remain Torch-lazy. PyTorch code lives in `src/swift/rl/torch_ppo.py`; experiment runners own artifact output; tuning stays deterministic and repo-native. PyBullet remains command-level smoke only.
 
@@ -24,6 +24,7 @@
 - [x] Add optional extra `train = ["numpy>=2.4,<3", "torch>=2.12,<3"]`.
 - [x] Add `TorchUnavailableError`, `MLPActorCriticConfig`, `PPOTrainingConfig`, `PPOTrainingResult`, and lazy `train_ppo_mlp(...)`.
 - [x] Implement `torch_ppo.py` with MLP actor-critic, diagonal Gaussian sampling, action scaling, rollout collection, GAE, PPO clipped loss, and finite result metrics.
+- [x] Persist strict update-history JSONL and a checkpoint containing model, optimizer, and RNG state.
 - [x] Verify: `python -m pytest tests\rl\test_ppo_optional.py tests\rl\test_torch_ppo.py -q`.
 
 ## Task 2: Artifact Writer And Evaluation Metrics
@@ -54,6 +55,7 @@
 - [x] Write failing tests for loading `configs/training.yaml`, rejecting invalid PPO settings, producing JSON-safe training summary, and CLI `--help` / smoke output.
 - [x] Add typed training settings for PPO, network, run, environment, and artifact paths.
 - [x] Implement runner that builds `SimpleAvoidanceEnv`, calls `train_ppo_mlp`, writes summary JSON, and returns a strict payload.
+- [x] Link summary JSON to the training-history JSONL and checkpoint artifacts.
 - [x] Implement CLI with `--config`, `--total-timesteps`, `--seed`, `--output`, and `--dry-run`.
 - [x] Verify: `python -m pytest tests\config\test_training_settings.py tests\experiments\test_ppo_training_runner.py tests\test_ppo_mlp_smoke_script.py -q`.
 
@@ -80,6 +82,7 @@
 - [x] `python scripts\run_pybullet_smoke.py --check-only`
 - [x] `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json`
 - [x] `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json`
+- [x] `python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json`
 - [ ] Confirm `git status -sb` is clean after committing and pushing.
 
 ## Self-Review

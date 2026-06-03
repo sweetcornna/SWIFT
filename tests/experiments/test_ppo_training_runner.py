@@ -39,6 +39,15 @@ def test_ppo_training_smoke_returns_json_safe_summary(tmp_path: Path):
     assert summary["training"]["total_timesteps"] == 128
     assert summary["training"]["updates"] >= 1
     assert summary["artifacts"]["summary_json"] == str(output)
+    history_path = Path(summary["artifacts"]["training_history_jsonl"])
+    checkpoint_path = Path(summary["artifacts"]["checkpoint_path"])
+    assert history_path.exists()
+    assert checkpoint_path.exists()
+    assert summary["training"]["history_path"] == str(history_path)
+    assert summary["training"]["checkpoint_path"] == str(checkpoint_path)
+    history = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    assert len(history) == summary["training"]["updates"]
+    assert {record["record_type"] for record in history} == {"ppo_update"}
     assert "Infinity" not in raw_summary
     assert "NaN" not in raw_summary
     for value in summary["training"].values():

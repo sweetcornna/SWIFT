@@ -1,4 +1,5 @@
 import importlib
+from pathlib import Path
 import sys
 
 import pytest
@@ -18,6 +19,7 @@ def test_training_config_defaults_are_smoke_sized_and_validated():
 
     network = MLPActorCriticConfig()
     config = PPOTrainingConfig()
+    artifact_config = PPOTrainingConfig(checkpoint_path="checkpoints/model.ckpt", history_path="outputs/history.jsonl")
 
     assert network.observation_dim == 15
     assert network.action_dim == 3
@@ -25,6 +27,9 @@ def test_training_config_defaults_are_smoke_sized_and_validated():
     assert config.rollout_steps == 32
     assert config.minibatch_size == 16
     assert config.update_epochs == 1
+    assert artifact_config.checkpoint_path == Path("checkpoints/model.ckpt")
+    assert artifact_config.history_path == Path("outputs/history.jsonl")
+    assert "swift.rl.torch_ppo" not in sys.modules
     with pytest.raises(ValueError, match="total_timesteps"):
         PPOTrainingConfig(total_timesteps=0)
     with pytest.raises(ValueError, match="minibatch_size"):

@@ -36,6 +36,8 @@ metrics fail early.
 `src/swift/experiments/ppo_training_runner.py` builds the Stage 1 environment,
 runs PPO training, writes summary artifacts, and returns a strict JSON-safe
 payload. `scripts/run_ppo_mlp_smoke.py` exposes this as a Windows-friendly CLI.
+The runner now writes strict update-history JSONL and a Torch checkpoint with
+model, optimizer, and RNG state for audit and resume preparation.
 
 ### Tuning Runner And CLI
 
@@ -45,6 +47,12 @@ policy collides in that scenario; the tuned candidate must succeed without
 regressing the no-obstacle baseline. `scripts/run_stage1_tuning.py` writes the
 full tuning report.
 
+### Stage 1 Report CLI
+
+`src/swift/experiments/stage1_report.py` merges the PPO smoke summary and tuning
+JSON into a strict Stage 1 evidence report. `scripts/run_stage1_report.py`
+exposes this as a CLI.
+
 ## Acceptance Gates
 
 - `python -m pytest` passes.
@@ -52,6 +60,7 @@ full tuning report.
 - `python scripts\run_pybullet_smoke.py --check-only` passes.
 - `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json` exits 0 and writes finite metrics.
 - `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json` exits 0 and reports collision-to-success improvement.
+- `python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json` exits 0 and reports collision-to-success readiness.
 - Generated `outputs/` and `checkpoints/` artifacts remain ignored by Git.
 
 ## Deferred Work

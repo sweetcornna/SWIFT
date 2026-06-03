@@ -4,6 +4,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 
@@ -68,6 +69,8 @@ class PPOTrainingConfig(PPOConfig):
     seed: int = 0
     torch_num_threads: int = 1
     network: MLPActorCriticConfig = field(default_factory=MLPActorCriticConfig)
+    checkpoint_path: Path | None = None
+    history_path: Path | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -89,6 +92,10 @@ class PPOTrainingConfig(PPOConfig):
             except AttributeError as exc:
                 raise TypeError("network must be an MLPActorCriticConfig") from exc
             object.__setattr__(self, "network", network)
+        if self.checkpoint_path is not None:
+            object.__setattr__(self, "checkpoint_path", Path(self.checkpoint_path))
+        if self.history_path is not None:
+            object.__setattr__(self, "history_path", Path(self.history_path))
 
 
 @dataclass(frozen=True)
@@ -103,6 +110,8 @@ class PPOTrainingResult:
     final_policy_loss: float
     final_value_loss: float
     final_entropy: float
+    checkpoint_path: str | None = None
+    history_path: str | None = None
 
 
 def train_ppo_mlp(

@@ -8,7 +8,7 @@ import hashlib
 import json
 
 from swift.config import TrainingSettings
-from swift.experiments.artifacts import ExperimentArtifactWriter, build_run_id
+from swift.experiments.artifacts import ExperimentArtifactWriter, build_run_id, checkpoint_filename
 from swift.rl.ppo import PPOTrainingConfig, PPOTrainingResult, train_ppo_mlp
 from swift.envs import SimpleAvoidanceEnv
 
@@ -30,17 +30,31 @@ class PPOTrainingRunConfig:
 
 
 def run_ppo_training_smoke(config: PPOTrainingRunConfig) -> dict[str, Any]:
-    training_config = _training_config(config)
+    base_training_config = _training_config(config)
     writer = ExperimentArtifactWriter(config.settings.artifact)
     run_id = build_run_id(
         stage=config.settings.run.stage,
         variant=config.settings.run.variant,
-        seed=training_config.seed,
-        config_hash=_config_hash(config.settings, training_config.total_timesteps),
+        seed=base_training_config.seed,
+        config_hash=_config_hash(config.settings, base_training_config.total_timesteps),
         started_at_utc=datetime.now(UTC),
     )
     paths = writer.paths_for(config.settings.run.stage, config.settings.run.variant, run_id)
     output_path = config.output or paths.summary_json
+    checkpoint_path = paths.checkpoint_dir / checkpoint_filename(
+        variant=config.settings.run.variant,
+        run_id=run_id,
+        episode=0,
+        step=base_training_config.total_timesteps,
+        label="final",
+        metric_name="planned_steps",
+        metric_value=float(base_training_config.total_timesteps),
+    )
+    training_config = _training_config(
+        config,
+        checkpoint_path=checkpoint_path,
+        history_path=paths.episode_jsonl,
+    )
 
     result = train_ppo_mlp(
         lambda: SimpleAvoidanceEnv(config.settings.environment),
@@ -51,12 +65,19 @@ def run_ppo_training_smoke(config: PPOTrainingRunConfig) -> dict[str, Any]:
         result=result,
         run_id=run_id,
         output_path=output_path,
+        history_path=paths.episode_jsonl,
+        checkpoint_path=checkpoint_path,
     )
     writer.write_summary(output_path, summary)
     return json.loads(Path(output_path).read_text(encoding="utf-8"))
 
 
-def _training_config(config: PPOTrainingRunConfig) -> PPOTrainingConfig:
+def _training_config(
+    config: PPOTrainingRunConfig,
+    *,
+    checkpoint_path: Path | None = None,
+    history_path: Path | None = None,
+) -> PPOTrainingConfig:
     total_timesteps = config.total_timesteps or config.settings.run.total_timesteps
     rollout_steps = min(config.settings.ppo.rollout_steps, total_timesteps, 64)
     minibatch_size = min(config.settings.ppo.minibatch_size, rollout_steps)
@@ -74,6 +95,8 @@ def _training_config(config: PPOTrainingRunConfig) -> PPOTrainingConfig:
         max_grad_norm=config.settings.ppo.max_grad_norm,
         seed=config.seed if config.seed is not None else config.settings.run.seed,
         torch_num_threads=1,
+        checkpoint_path=checkpoint_path,
+        history_path=history_path,
     )
 
 
@@ -83,6 +106,8 @@ def _summary_payload(
     result: PPOTrainingResult,
     run_id: str,
     output_path: Path,
+    history_path: Path,
+    checkpoint_path: Path,
 ) -> dict[str, Any]:
     training = asdict(result)
     return {
@@ -100,6 +125,8 @@ def _summary_payload(
         },
         "artifacts": {
             "summary_json": str(output_path),
+            "training_history_jsonl": str(history_path),
+            "checkpoint_path": str(checkpoint_path),
         },
     }
 

@@ -18,7 +18,8 @@ simulation substrate.
 5. RL layer: PPO, HCA, and APF configuration contracts plus optional Torch PPO
    training implementation loaded lazily.
 6. Experiment layer: ablation variants, metric naming, strict JSON artifacts,
-   training smoke runners, and deterministic tuning reports.
+   update-history JSONL, checkpoints, training smoke runners, deterministic
+   tuning reports, and Stage 1 evidence aggregation.
 
 ## Integration Rule
 
