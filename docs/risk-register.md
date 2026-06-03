@@ -9,4 +9,5 @@
 | GPU availability | Long training may be blocked by local compute limits. | Keep CPU smoke tests, small deterministic scenarios, and prepare cloud GPU configuration later. |
 | PyBullet substrate drift | `D:\project\pybullet` may change independently of SWIFT. | Validate through health checks and record exact adapter assumptions. |
 | Premature PyBullet training coupling | Training code may become dependent on local PyBullet internals before SWIFT has a stable environment contract. | Keep Stage 1 baseline repo-native, limit PyBullet to command-level smoke, and add an environment adapter only after the contract stabilizes. |
+| Training smoke mistaken for convergence | A short CPU PPO smoke can prove the training loop works without proving the policy has converged. | Report smoke metrics separately from tuning/convergence claims; use deterministic tuning and later longer training runs for performance evidence. |
 | Demo reproducibility | GUI demos and videos can diverge from testable evidence. | Treat headless smoke tests and logged metrics as the source of truth. |

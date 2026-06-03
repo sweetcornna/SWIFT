@@ -15,8 +15,10 @@ simulation substrate.
 3. Core domain layer: drone states, actions, obstacles, rewards, and metrics.
 4. Environment contract layer: Gymnasium-style boundaries for later runtime
    implementation.
-5. RL bootstrap layer: PPO, HCA, and APF configuration contracts.
-6. Experiment layer: ablation variants and metric naming.
+5. RL layer: PPO, HCA, and APF configuration contracts plus optional Torch PPO
+   training implementation loaded lazily.
+6. Experiment layer: ablation variants, metric naming, strict JSON artifacts,
+   training smoke runners, and deterministic tuning reports.
 
 ## Integration Rule
 

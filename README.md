@@ -23,6 +23,14 @@ python scripts\run_pybullet_smoke.py --check-only
 python scripts\run_baseline_demo.py --episodes 3 --output outputs\baseline\baseline_metrics.json
 ```
 
+### Stage 1 Training And Tuning
+
+```powershell
+python -m pip install -e ".[dev,train]"
+python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json
+python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json
+```
+
 ## Repository Boundary
 
 - SWIFT owns enterprise project structure and experiment orchestration.

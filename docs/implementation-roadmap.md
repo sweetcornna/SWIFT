@@ -16,6 +16,11 @@ environment, policy, and experiment contracts before training is coupled to any
 external simulator internals. `D:\project\pybullet` remains command-level
 substrate smoke until the environment adapter stabilizes.
 
+The current Stage 1 training slice adds an optional Torch CPU PPO smoke and a
+deterministic tuning grid. PPO smoke verifies the train/update/artifact loop;
+the tuning grid uses a fixed obstacle scenario where the default policy collides
+and the selected candidate reaches the goal safely.
+
 ## Stage 2: PPO+HCA Upgrade
 
 Replace flat MLP perception with target and threat attention layers. Preserve

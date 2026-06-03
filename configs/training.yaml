@@ -11,3 +11,31 @@ ppo:
 baseline:
   model: MLP
   purpose: stable demonstrable baseline before HCA and APF fusion
+policy:
+  max_speed: 1.0
+  max_heading_delta: 0.5
+  max_climb_rate: 0.5
+  obstacle_avoidance_distance: 2.0
+  avoidance_heading_delta: 0.4
+environment:
+  goal: [4.0, 0.0, 0.0]
+  max_steps: 8
+run:
+  stage: stage1
+  variant: ppo_mlp
+  seed: 0
+  episodes: 10
+  total_timesteps: 128
+artifact:
+  root: outputs
+  episode_logs: outputs\episodes
+  experiment_reports: outputs\reports
+  checkpoints: checkpoints\stage1
+stage1_tuning:
+  minimum_safety_distance: 0.30
+  search_space:
+    max_speed: [1.0, 0.8]
+    max_heading_delta: [0.5, 0.6]
+    obstacle_avoidance_distance: [2.0, 4.0]
+    avoidance_heading_delta: [0.4]
+    max_climb_rate: [0.5]
