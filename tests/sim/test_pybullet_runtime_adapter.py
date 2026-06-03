@@ -108,6 +108,46 @@ def test_pybullet_training_env_exposes_ppo_contract_with_fake_aviary(tmp_path: P
     assert fake_env.closed is True
 
 
+def test_pybullet_training_env_adds_goal_tail_reward_and_episode_metrics(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_env = FakeGoalVelocityAviary()
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(1.0, 0.0, 0.0),
+        goal_radius=0.2,
+        max_steps=4,
+        max_speed=1.0,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        velocity_aviary_cls=lambda **_: fake_env,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, info = training_env.reset(seed=13)
+    next_observation, reward, terminated, truncated, step_info = training_env.step(
+        DroneAction(speed=1.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert observation[7:10] == pytest.approx((1.0, 0.0, 0.0))
+    assert observation[14] == pytest.approx(1.0)
+    assert next_observation[7:10] == pytest.approx((0.05, 0.0, 0.0))
+    assert next_observation[14] == pytest.approx(0.05)
+    assert reward > 90.0
+    assert terminated is True
+    assert truncated is False
+    assert info["reached_goal"] is False
+    assert step_info["reached_goal"] is True
+    assert step_info["collided"] is False
+    assert step_info["timed_out"] is False
+    assert step_info["episode_metrics"].success is True
+    assert step_info["reward_breakdown"].arrive == pytest.approx(100.0)
+    assert step_info["raw_reward"] == -999.0
+
+
 class FakeVelocityAviary:
     def __init__(self) -> None:
         self.reset_seed = None
@@ -132,3 +172,22 @@ class FakeVelocityAviary:
 
     def close(self):
         self.closed = True
+
+
+class FakeGoalVelocityAviary:
+    def reset(self, seed=None, options=None):
+        return [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]], {
+            "seed": seed
+        }
+
+    def step(self, action):
+        return (
+            [[0.95, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]],
+            -999.0,
+            False,
+            False,
+            {"source": "fake-goal"},
+        )
+
+    def close(self):
+        pass
