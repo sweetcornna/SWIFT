@@ -118,7 +118,7 @@ class PyBulletVelocityRuntimeEnv:
         return VelocityAviary, DroneModel, Physics
 
     def _contact_info(self, observation: tuple[float, ...]) -> dict[str, Any]:
-        if not self.enable_obstacles:
+        if not self.enable_obstacles and not self._swift_obstacles:
             return {}
         try:
             import pybullet as p

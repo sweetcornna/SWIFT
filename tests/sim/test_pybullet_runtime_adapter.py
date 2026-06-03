@@ -423,6 +423,42 @@ def test_pybullet_training_env_passes_configured_obstacles_to_runtime_when_enabl
     assert training_env._runtime._swift_obstacles == settings.obstacles
 
 
+def test_pybullet_training_env_injects_configured_obstacles_even_when_builtin_obstacles_are_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletSwiftObstacles()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+    captured_kwargs = {}
+    settings = SimpleAvoidanceSettings(
+        obstacles=(ObstacleState(position=(2.0, 3.0, 4.0), radius=0.4),),
+    )
+
+    def aviary_factory(**kwargs):
+        captured_kwargs["kwargs"] = kwargs
+        return FakeContactVelocityAviary()
+
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        enable_pybullet_obstacles=True,
+        velocity_aviary_cls=aviary_factory,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    observation, info = training_env.reset(seed=47)
+    training_env.close()
+
+    assert captured_kwargs["kwargs"]["obstacles"] is False
+    assert fake_pybullet.multi_bodies == [(900, (2.0, 3.0, 4.0), 123)]
+    assert observation[10:13] == pytest.approx((1.0, 1.0, 1.0))
+    assert observation[13] == pytest.approx(0.4)
+    assert info["nearest_obstacle_body_id"] == 900
+
+
 def test_pybullet_training_env_detects_collision_against_configured_static_obstacle(tmp_path: Path):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
