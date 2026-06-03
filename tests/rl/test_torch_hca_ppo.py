@@ -15,6 +15,8 @@ from swift.rl.torch_hca_ppo import (
     HCAActorCritic,
     HCAFeatureExtractor,
     HCAObservationAdapter,
+    deterministic_hca_action,
+    load_ppo_hca_checkpoint,
     sample_hca_action,
     train_ppo_hca,
 )
@@ -156,3 +158,15 @@ def test_train_ppo_hca_runs_tiny_cpu_update_and_writes_artifacts(tmp_path: Path)
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     assert checkpoint["record_type"] == "ppo_hca_checkpoint"
     assert checkpoint["network_config"]["embedding_dim"] == 16
+
+    loaded_model, loaded_checkpoint = load_ppo_hca_checkpoint(checkpoint_path)
+    assert loaded_checkpoint["record_type"] == "ppo_hca_checkpoint"
+    observation, _ = make_env().reset(seed=321)
+    action = deterministic_hca_action(
+        loaded_model,
+        observation,
+        SimpleAvoidanceSettings(max_steps=8, goal=(4.0, 0.0, 0.0)),
+        loaded_model.config,
+    )
+    assert isinstance(action, DroneAction)
+    assert 0.0 <= action.speed <= 1.0

@@ -10,9 +10,56 @@ from swift.experiments.convergence_gate import (
 )
 
 
-def test_convergence_gate_accepts_long_training_report_and_writes_manifest(tmp_path: Path):
-    input_path = tmp_path / "ablation.json"
+def test_convergence_gate_accepts_holdout_checkpoint_report_and_writes_manifest(tmp_path: Path):
+    input_path = tmp_path / "holdout.json"
     output_path = tmp_path / "convergence_gate.json"
+    input_path.write_text(json.dumps(_holdout_report(seed_count=2)), encoding="utf-8")
+
+    report = run_convergence_gate(
+        ConvergenceGateConfig(
+            input_report=input_path,
+            output=output_path,
+            thresholds=ConvergenceThresholds(
+                min_success_rate=0.9,
+                max_collision_rate=0.0,
+                max_timeout_rate=0.1,
+                min_seed_count=2,
+                min_total_timesteps=4096,
+                min_episodes_completed=10,
+                required_evidence_level="long_training_convergence",
+            ),
+        )
+    )
+
+    raw_report = output_path.read_text(encoding="utf-8")
+    assert json.loads(raw_report) == report
+    assert report["record_type"] == "training_convergence_gate_report"
+    assert report["source_record_type"] == "multi_seed_checkpoint_holdout_report"
+    assert report["best_variant"] == "ppo_hca_apf"
+    assert report["readiness"]["convergence_claim"] is True
+    assert report["readiness"]["evidence_level"] == "long_training_convergence"
+    assert {gate["name"] for gate in report["gates"]} >= {"holdout_checkpoint_evidence", "required_variants_completed"}
+    assert all(gate["passed"] for gate in report["gates"])
+    assert report["boundary_notes"] == [
+        "convergence_claim_requires_long_training_evidence",
+        "convergence_claim_requires_holdout_checkpoint_evidence",
+        "gate_uses_recorded_metrics_not_video_or_manual_observation",
+        "simulator_convergence_is_not_real_flight_safety_evidence",
+    ]
+    assert "NaN" not in raw_report
+    assert "Infinity" not in raw_report
+
+    manifest_path = Path(report["artifacts"]["manifest_json"])
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["subject_record_type"] == "training_convergence_gate_report"
+    assert {reference["role"] for reference in manifest["inputs"]} == {"source_convergence_evidence_report"}
+    assert {reference["role"] for reference in manifest["outputs"]} == {"convergence_gate_report"}
+
+
+def test_convergence_gate_rejects_raw_long_training_ablation_without_holdout_evidence(tmp_path: Path):
+    input_path = tmp_path / "ablation.json"
+    output_path = tmp_path / "gate.json"
     input_path.write_text(json.dumps(_ablation_report(evidence_level="long_training_convergence")), encoding="utf-8")
 
     report = run_convergence_gate(
@@ -30,29 +77,10 @@ def test_convergence_gate_accepts_long_training_report_and_writes_manifest(tmp_p
         )
     )
 
-    raw_report = output_path.read_text(encoding="utf-8")
-    assert json.loads(raw_report) == report
-    assert report["record_type"] == "training_convergence_gate_report"
-    assert report["source_record_type"] == "training_ablation_report"
-    assert report["best_variant"] == "ppo_hca_apf"
-    assert report["readiness"]["convergence_claim"] is True
-    assert report["readiness"]["evidence_level"] == "long_training_convergence"
-    assert {gate["name"] for gate in report["gates"]} >= {"required_variants_completed"}
-    assert all(gate["passed"] for gate in report["gates"])
-    assert report["boundary_notes"] == [
-        "convergence_claim_requires_long_training_evidence",
-        "gate_uses_recorded_metrics_not_video_or_manual_observation",
-        "simulator_convergence_is_not_real_flight_safety_evidence",
-    ]
-    assert "NaN" not in raw_report
-    assert "Infinity" not in raw_report
-
-    manifest_path = Path(report["artifacts"]["manifest_json"])
-    assert manifest_path.exists()
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["subject_record_type"] == "training_convergence_gate_report"
-    assert {reference["role"] for reference in manifest["inputs"]} == {"source_training_report"}
-    assert {reference["role"] for reference in manifest["outputs"]} == {"convergence_gate_report"}
+    failed = {gate["name"]: gate for gate in report["gates"] if not gate["passed"]}
+    assert report["readiness"]["convergence_claim"] is False
+    assert failed["holdout_checkpoint_evidence"]["actual"] == "training_ablation_report"
+    assert failed["holdout_checkpoint_evidence"]["expected"] == "multi_seed_checkpoint_holdout_report"
 
 
 def test_convergence_gate_rejects_cpu_smoke_even_when_metrics_pass(tmp_path: Path):
@@ -210,7 +238,7 @@ def test_convergence_gate_audits_multi_scenario_report_schema(tmp_path: Path):
     assert "required_variants_completed" not in failed
 
 
-def test_convergence_gate_accepts_multi_seed_report_when_seed_coverage_passes(tmp_path: Path):
+def test_convergence_gate_rejects_raw_multi_seed_report_without_holdout_evidence(tmp_path: Path):
     input_path = tmp_path / "multi_seed.json"
     output_path = tmp_path / "gate.json"
     input_path.write_text(json.dumps(_multi_seed_report(seed_count=2)), encoding="utf-8")
@@ -230,9 +258,10 @@ def test_convergence_gate_accepts_multi_seed_report_when_seed_coverage_passes(tm
         )
     )
 
-    assert report["readiness"]["convergence_claim"] is True
-    assert {gate["name"] for gate in report["gates"]} >= {"seed_count"}
-    assert all(gate["passed"] for gate in report["gates"])
+    failed = {gate["name"]: gate for gate in report["gates"] if not gate["passed"]}
+    assert report["readiness"]["convergence_claim"] is False
+    assert failed["holdout_checkpoint_evidence"]["actual"] == "multi_seed_training_report"
+    assert failed["holdout_checkpoint_evidence"]["expected"] == "multi_seed_checkpoint_holdout_report"
 
 
 def test_convergence_gate_rejects_multi_seed_report_with_too_few_seeds(tmp_path: Path):
@@ -359,6 +388,29 @@ def _variant(name: str, metrics: dict[str, float]) -> dict[str, object]:
             "episodes_completed": 24,
         },
     }
+
+
+def _holdout_report(*, seed_count: int) -> dict[str, object]:
+    report = _multi_seed_report(seed_count=seed_count)
+    report["record_type"] = "multi_seed_checkpoint_holdout_report"
+    report["variant"] = "multi_seed_checkpoint_holdout"
+    report["source_record_type"] = "multi_seed_training_report"
+    report["source_run_id"] = "stage4_multi-seed-training_seed-0_cfg-test_20260603t000000z"
+    report["training_seeds"] = list(range(seed_count))
+    report["holdout_seeds"] = [10000, 11000]
+    report["holdout_seed_count"] = 2
+    report["readiness"] = {
+        "all_checkpoints_evaluated": True,
+        "training_seed_count": seed_count,
+        "holdout_seed_count": 2,
+        "convergence_claim": False,
+        "evidence_level": "long_training_convergence",
+    }
+    for variant in report["variants"]:
+        variant["training_seed_count"] = seed_count
+        variant["holdout_seed_count"] = 2
+        variant["holdout_checkpoint_count"] = seed_count * 2
+    return report
 
 
 def _multi_scenario_report() -> dict[str, object]:

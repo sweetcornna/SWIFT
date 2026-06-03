@@ -5,25 +5,9 @@ from pathlib import Path
 
 
 def test_convergence_gate_script_writes_report(tmp_path: Path):
-    input_path = tmp_path / "ablation.json"
+    input_path = tmp_path / "holdout.json"
     output_path = tmp_path / "gate.json"
-    input_path.write_text(
-        json.dumps(
-            {
-                "record_type": "training_ablation_report",
-                "run_id": "stage4_ablation_seed-0_cfg-test_20260603t000000z",
-                "lineage": {"evidence_level": "long_training_convergence"},
-                "best_variant": "ppo_hca",
-                "variants": [
-                    _variant("ppo_mlp"),
-                    _variant("ppo_hca"),
-                    _variant("ppo_hca_apf"),
-                ],
-                "readiness": {"evidence_level": "long_training_convergence"},
-            }
-        ),
-        encoding="utf-8",
-    )
+    input_path.write_text(json.dumps(_holdout_report()), encoding="utf-8")
 
     result = subprocess.run(
         [
@@ -397,4 +381,53 @@ def _variant(name: str) -> dict[str, object]:
             "updates": 8,
             "episodes_completed": 16,
         },
+    }
+
+
+def _holdout_report() -> dict[str, object]:
+    metrics = {
+        "success_rate": 1.0,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_episode_return": 12.0,
+    }
+    return {
+        "record_type": "multi_seed_checkpoint_holdout_report",
+        "run_id": "stage4_multi-seed-checkpoint-holdout_seed-10000_cfg-test_20260603t000000z",
+        "lineage": {"evidence_level": "long_training_convergence"},
+        "best_variant": "ppo_hca",
+        "seed_count": 1,
+        "training_seeds": [0],
+        "holdout_seeds": [10000],
+        "variants": [
+            _holdout_variant("ppo_mlp", metrics),
+            _holdout_variant("ppo_hca", metrics),
+            _holdout_variant("ppo_hca_apf", metrics),
+        ],
+        "readiness": {"evidence_level": "long_training_convergence"},
+    }
+
+
+def _holdout_variant(name: str, metrics: dict[str, float]) -> dict[str, object]:
+    return {
+        "variant": name,
+        "completed": True,
+        "metrics": metrics,
+        "training": {
+            "total_timesteps": 4096,
+            "updates": 8,
+            "episodes_completed": 16,
+        },
+        "seed_metrics": [
+            {
+                "training_seed": 0,
+                "holdout_seed": 10000,
+                "metrics": metrics,
+                "training": {
+                    "total_timesteps": 4096,
+                    "updates": 8,
+                    "episodes_completed": 16,
+                },
+            }
+        ],
     }

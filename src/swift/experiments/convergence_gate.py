@@ -17,6 +17,7 @@ from swift.experiments.artifacts import (
 
 BOUNDARY_NOTES = (
     "convergence_claim_requires_long_training_evidence",
+    "convergence_claim_requires_holdout_checkpoint_evidence",
     "gate_uses_recorded_metrics_not_video_or_manual_observation",
     "simulator_convergence_is_not_real_flight_safety_evidence",
 )
@@ -138,7 +139,7 @@ def run_convergence_gate(config: ConvergenceGateConfig) -> dict[str, Any]:
                 "evidence_level": evidence_level,
                 "convergence_claim": convergence_claim,
             },
-            inputs=[artifact_reference(config.input_report, role="source_training_report")],
+            inputs=[artifact_reference(config.input_report, role="source_convergence_evidence_report")],
             outputs=[artifact_reference(output_path, role="convergence_gate_report")],
         ),
     )
@@ -231,12 +232,23 @@ def _gates(
     evidence_levels = _evidence_level_values(source)
     completed_variants = _completed_variants(source)
     seed_count = _seed_count(source)
+    source_record_type = str(source.get("record_type", ""))
     return [
         _gate(
             "convergence_claim_allowed",
             thresholds.convergence_claim_allowed,
             True,
             thresholds.convergence_claim_allowed,
+        ),
+        _gate(
+            "holdout_checkpoint_evidence",
+            source_record_type,
+            "multi_seed_checkpoint_holdout_report",
+            (
+                not thresholds.convergence_claim_allowed
+                or thresholds.required_evidence_level != "long_training_convergence"
+                or source_record_type == "multi_seed_checkpoint_holdout_report"
+            ),
         ),
         _gate(
             "evidence_level_consistency",

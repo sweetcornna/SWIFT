@@ -28,9 +28,7 @@ class PPOCheckpointEvaluationConfig:
 
 
 def run_ppo_checkpoint_evaluation(config: PPOCheckpointEvaluationConfig) -> dict[str, Any]:
-    from swift.rl.torch_ppo import deterministic_action, load_ppo_mlp_checkpoint
-
-    model, checkpoint = load_ppo_mlp_checkpoint(config.checkpoint_path)
+    model, checkpoint, deterministic_action, policy_family = _load_checkpoint_policy(config.checkpoint_path)
     episodes = [
         _evaluate_episode(
             model=model,
@@ -44,6 +42,8 @@ def run_ppo_checkpoint_evaluation(config: PPOCheckpointEvaluationConfig) -> dict
         "schema_version": 1,
         "record_type": "ppo_checkpoint_evaluation",
         "checkpoint_path": str(config.checkpoint_path),
+        "checkpoint_record_type": str(checkpoint.get("record_type", "")),
+        "policy_family": policy_family,
         "checkpoint_training": dict(checkpoint.get("result", {})),
         "episodes_requested": config.episodes,
         "seed": config.seed,
@@ -60,6 +60,25 @@ def run_ppo_checkpoint_evaluation(config: PPOCheckpointEvaluationConfig) -> dict
         config.output.write_text(f"{serialized}\n", encoding="utf-8")
         return json.loads(config.output.read_text(encoding="utf-8"))
     return json.loads(json.dumps(summary, allow_nan=False, sort_keys=True))
+
+
+def _load_checkpoint_policy(path: Path) -> tuple[Any, dict[str, Any], Any, str]:
+    import torch
+
+    checkpoint = torch.load(path, map_location="cpu")
+    record_type = checkpoint.get("record_type")
+    if record_type == "ppo_checkpoint":
+        from swift.rl.torch_ppo import deterministic_action, load_ppo_mlp_checkpoint
+
+        model, loaded_checkpoint = load_ppo_mlp_checkpoint(path)
+        return model, loaded_checkpoint, deterministic_action, "ppo_mlp"
+    if record_type == "ppo_hca_checkpoint":
+        from swift.rl.torch_hca_ppo import deterministic_hca_action, load_ppo_hca_checkpoint
+
+        model, loaded_checkpoint = load_ppo_hca_checkpoint(path)
+        policy_family = "ppo_hca_apf" if isinstance(loaded_checkpoint.get("network_config", {}).get("apf_config"), dict) else "ppo_hca"
+        return model, loaded_checkpoint, deterministic_hca_action, policy_family
+    raise ValueError("checkpoint record_type must be ppo_checkpoint or ppo_hca_checkpoint")
 
 
 def _evaluate_episode(

@@ -13,7 +13,7 @@ from torch.nn import functional as F
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceSettings
 from swift.rl.apf import APFConfig
-from swift.rl.hca import HCAActorCriticConfig
+from swift.rl.hca import HCAActorCriticConfig, HCAObservationAdapterConfig
 from swift.rl.ppo import HCAPPOTrainingConfig, PPOTrainingResult
 from swift.rl.torch_ppo import (
     _action_distribution,
@@ -141,6 +141,31 @@ def sample_hca_action(
         logprob.detach().cpu(),
         value.detach().cpu(),
     )
+
+
+def deterministic_hca_action(
+    model: HCAActorCritic,
+    observation: Sequence[float],
+    settings: SimpleAvoidanceSettings,
+    network_config: HCAActorCriticConfig,
+) -> DroneAction:
+    observation_tensor = _observation_tensor(observation)
+    model.eval()
+    with torch.no_grad():
+        action_means, _ = model(observation_tensor.unsqueeze(0))
+    return _raw_action_to_drone_action(action_means[0].detach().cpu(), settings, network_config)
+
+
+def load_ppo_hca_checkpoint(path: str | Path) -> tuple[HCAActorCritic, dict[str, Any]]:
+    checkpoint_path = Path(path)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    if checkpoint.get("record_type") != "ppo_hca_checkpoint":
+        raise ValueError("checkpoint record_type must be ppo_hca_checkpoint")
+    network_config = _hca_network_config_from_checkpoint(checkpoint["network_config"])
+    model = HCAActorCritic(network_config).to(torch.device("cpu"))
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+    return model, checkpoint
 
 
 def train_ppo_hca(
@@ -307,6 +332,29 @@ def _apf_feature_tensor(observations: torch.Tensor, config: APFConfig) -> torch.
     repulsive = direction * torch.where(active, magnitude, torch.zeros_like(magnitude))
     combined = attractive + repulsive
     return torch.cat((attractive, repulsive, combined), dim=1)
+
+
+def _hca_network_config_from_checkpoint(payload: dict[str, Any]) -> HCAActorCriticConfig:
+    observation_payload = payload.get("observation")
+    observation = (
+        HCAObservationAdapterConfig(**observation_payload)
+        if isinstance(observation_payload, dict)
+        else HCAObservationAdapterConfig()
+    )
+    apf_payload = payload.get("apf_config")
+    apf_config = APFConfig(**apf_payload) if isinstance(apf_payload, dict) else None
+    return HCAActorCriticConfig(
+        observation=observation,
+        action_dim=int(payload.get("action_dim", 3)),
+        embedding_dim=int(payload.get("embedding_dim", 64)),
+        target_attention_heads=int(payload.get("target_attention_heads", 4)),
+        threat_attention_heads=int(payload.get("threat_attention_heads", 4)),
+        hidden_sizes=tuple(int(size) for size in payload.get("hidden_sizes", (64,))),
+        dropout=float(payload.get("dropout", 0.0)),
+        max_heading_delta=float(payload.get("max_heading_delta", 0.5)),
+        log_std_init=float(payload.get("log_std_init", -0.5)),
+        apf_config=apf_config,
+    )
 
 
 def _unit_vectors(vectors: torch.Tensor, *, epsilon: float) -> torch.Tensor:
