@@ -1,0 +1,37 @@
+ppo:
+  rollout_steps: 2048
+  minibatch_size: 64
+  update_epochs: 10
+  clip_range: 0.2
+  gamma: 0.99
+  gae_lambda: 0.95
+  entropy_coef: 0.01
+  value_loss_coef: 0.5
+  max_grad_norm: 0.5
+baseline:
+  model: MLP
+  purpose: PyBullet no-obstacle probe with a reachable physics horizon
+policy:
+  max_speed: 1.0
+  max_heading_delta: 0.2
+  min_speed_fraction: 0.4
+  max_climb_rate: 0.0
+  obstacle_avoidance_distance: 2.0
+  avoidance_heading_delta: 0.4
+environment:
+  goal: [0.5, 0.0, 0.1125]
+  max_steps: 600
+  goal_radius: 0.2
+  max_speed: 1.0
+  max_climb_rate: 0.0
+run:
+  stage: stage1
+  variant: ppo_mlp_pybullet_probe
+  seed: 0
+  episodes: 10
+  total_timesteps: 8192
+artifact:
+  root: outputs
+  episode_logs: outputs\episodes
+  experiment_reports: outputs\reports
+  checkpoints: checkpoints\stage1

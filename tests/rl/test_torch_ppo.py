@@ -13,6 +13,7 @@ from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceEnv, SimpleAv
 from swift.rl.ppo import MLPActorCriticConfig, PPOTrainingConfig
 from swift.rl.torch_ppo import (
     MLPActorCritic,
+    _raw_action_to_drone_action,
     compute_gae,
     deterministic_action,
     load_ppo_mlp_checkpoint,
@@ -48,6 +49,21 @@ def test_sample_action_returns_bounded_drone_action_and_training_tensors():
     assert raw_action.shape == (config.action_dim,)
     assert logprob.shape == ()
     assert value.shape == ()
+
+
+def test_raw_action_to_drone_action_applies_minimum_speed_fraction():
+    settings = SimpleAvoidanceSettings(max_speed=2.0, max_climb_rate=0.4)
+    config = MLPActorCriticConfig(
+        hidden_sizes=(8,),
+        max_heading_delta=0.35,
+        min_speed_fraction=0.4,
+    )
+
+    action = _raw_action_to_drone_action(torch.tensor([0.0, 0.0, 0.0]), settings, config)
+
+    assert action.speed == pytest.approx(1.4)
+    assert action.heading_delta == pytest.approx(0.0)
+    assert action.climb_rate == pytest.approx(0.0)
 
 
 def test_compute_gae_returns_finite_returns_and_advantages():

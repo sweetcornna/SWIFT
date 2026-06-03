@@ -32,6 +32,7 @@ __all__ = [
     "ExperimentSpec",
     "PolicySearchSpace",
     "PPOCheckpointEvaluationConfig",
+    "PyBulletCheckpointEvaluationConfig",
     "PyBulletPPOTrainingRunConfig",
     "Stage1Scenario",
     "TuningRunConfig",
@@ -44,6 +45,7 @@ __all__ = [
     "file_sha256",
     "run_baseline_episodes",
     "run_ppo_checkpoint_evaluation",
+    "run_pybullet_checkpoint_evaluation",
     "run_pybullet_ppo_training",
     "run_stage1_policy_search",
     "write_stage1_report",
@@ -51,6 +53,17 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name in {"PyBulletCheckpointEvaluationConfig", "run_pybullet_checkpoint_evaluation"}:
+        from swift.experiments.pybullet_checkpoint_evaluator import (
+            PyBulletCheckpointEvaluationConfig,
+            run_pybullet_checkpoint_evaluation,
+        )
+
+        exports = {
+            "PyBulletCheckpointEvaluationConfig": PyBulletCheckpointEvaluationConfig,
+            "run_pybullet_checkpoint_evaluation": run_pybullet_checkpoint_evaluation,
+        }
+        return exports[name]
     if name in {"PyBulletPPOTrainingRunConfig", "run_pybullet_ppo_training"}:
         from swift.experiments.pybullet_training_runner import (
             PyBulletPPOTrainingRunConfig,

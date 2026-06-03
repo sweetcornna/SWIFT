@@ -67,11 +67,30 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_pp
 D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ppo_training.py --total-timesteps 32 --seed 1 --enable-obstacles --output outputs\training\pybullet_obstacles_pilot_32.json
 ```
 
-Successful reports use `record_type=pybullet_ppo_training_report`,
-`training_backend=torch_ppo_mlp_pybullet_velocity`, and
-`runtime_contract=pybullet_velocity_training_compatibility`. Omit `--output`
-when you want the summary and manifest to use run-id artifact paths instead of
-a fixed report path.
+The tuned PyBullet PPO curriculum uses explicit training configs that keep the
+physics horizon reachable and apply a minimum cruise-speed prior for the
+high-frequency velocity-control substrate:
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ppo_training.py --training-config configs\training_pybullet_probe.yaml --total-timesteps 32768 --seed 6 --output outputs\training\pybullet_probe_speedprior_32768.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ppo_training.py --training-config configs\training_pybullet_obstacles.yaml --total-timesteps 32768 --seed 7 --enable-obstacles --output outputs\training\pybullet_obstacles_speedprior_32768.json
+```
+
+Use the `checkpoint_path` recorded in each PyBullet training report to run
+deterministic PyBullet checkpoint evaluation:
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_checkpoint_eval.py --training-config configs\training_pybullet_probe.yaml --checkpoint <checkpoint_path> --episodes 5 --output outputs\evaluation\pybullet_probe_speedprior_32768_eval.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_checkpoint_eval.py --training-config configs\training_pybullet_obstacles.yaml --checkpoint <checkpoint_path> --episodes 5 --enable-obstacles --output outputs\evaluation\pybullet_obstacles_speedprior_32768_eval.json
+```
+
+Successful training reports use `record_type=pybullet_ppo_training_report` and
+`training_backend=torch_ppo_mlp_pybullet_velocity`; successful deterministic
+evaluation reports use `record_type=pybullet_ppo_checkpoint_evaluation`. Both
+report types include `runtime_contract=pybullet_velocity_training_compatibility`
+and a strict manifest sidecar with artifact checksums. Omit `--output` when you
+want the summary and manifest to use run-id artifact paths instead of a fixed
+report path.
 
 APF feature generation is available through `swift.rl.apf_features_from_observation(...)`
 as a 9D attraction/repulsion/combined-force vector for later HCA+APF fusion.

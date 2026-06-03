@@ -12,6 +12,7 @@ OBSERVATION_SIZE = 15
 class MLPBaselinePolicyConfig:
     max_speed: float = 1.0
     max_heading_delta: float = 0.5
+    min_speed_fraction: float = 0.0
     max_climb_rate: float = 0.5
     obstacle_avoidance_distance: float = 2.0
     avoidance_heading_delta: float = 0.4
@@ -19,6 +20,7 @@ class MLPBaselinePolicyConfig:
     def __post_init__(self) -> None:
         _set_non_negative_float(self, "max_speed", self.max_speed)
         _set_non_negative_float(self, "max_heading_delta", self.max_heading_delta)
+        _set_fraction(self, "min_speed_fraction", self.min_speed_fraction)
         _set_non_negative_float(self, "max_climb_rate", self.max_climb_rate)
         _set_non_negative_float(self, "obstacle_avoidance_distance", self.obstacle_avoidance_distance)
         _set_non_negative_float(self, "avoidance_heading_delta", self.avoidance_heading_delta)
@@ -81,6 +83,13 @@ def _set_non_negative_float(instance: object, name: str, value: float) -> None:
     numeric_value = float(value)
     if numeric_value < 0.0:
         raise ValueError(f"{name} must be non-negative")
+    object.__setattr__(instance, name, numeric_value)
+
+
+def _set_fraction(instance: object, name: str, value: float) -> None:
+    numeric_value = float(value)
+    if numeric_value < 0.0 or numeric_value > 1.0:
+        raise ValueError(f"{name} must be between 0 and 1")
     object.__setattr__(instance, name, numeric_value)
 
 

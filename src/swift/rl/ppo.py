@@ -46,6 +46,7 @@ class MLPActorCriticConfig:
     action_dim: int = 3
     hidden_sizes: tuple[int, ...] = (64, 64)
     max_heading_delta: float = 0.5
+    min_speed_fraction: float = 0.0
     log_std_init: float = -0.5
 
     def __post_init__(self) -> None:
@@ -58,6 +59,7 @@ class MLPActorCriticConfig:
             if size <= 0:
                 raise ValueError("hidden_sizes values must be positive")
         _set_positive_float(self, "max_heading_delta", self.max_heading_delta)
+        _set_probability(self, "min_speed_fraction", self.min_speed_fraction)
         _set_finite_float(self, "log_std_init", self.log_std_init)
 
 
@@ -89,6 +91,7 @@ class PPOTrainingConfig(PPOConfig):
                     action_dim=self.network.action_dim,
                     hidden_sizes=self.network.hidden_sizes,
                     max_heading_delta=self.network.max_heading_delta,
+                    min_speed_fraction=self.network.min_speed_fraction,
                     log_std_init=self.network.log_std_init,
                 )
             except AttributeError as exc:

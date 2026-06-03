@@ -38,13 +38,14 @@ class PyBulletVelocityTrainingEnv:
         self._steps = 0
         self._path: list[Vector3] = []
         self._previous_goal_distance = 0.0
+        self._initial_goal_distance = 1.0
         if runtime is None:
             from swift.sim.pybullet_runtime import PyBulletVelocityRuntimeEnv
 
             runtime = PyBulletVelocityRuntimeEnv(
                 simulation_settings,
                 max_speed=self.settings.max_speed,
-                enable_obstacles=bool(enable_pybullet_obstacles and not self.settings.obstacles),
+                enable_obstacles=False,
                 swift_obstacles=self.settings.obstacles if enable_pybullet_obstacles else (),
                 velocity_aviary_cls=velocity_aviary_cls,
                 drone_model=drone_model,
@@ -62,6 +63,7 @@ class PyBulletVelocityTrainingEnv:
         observation = self._with_goal_tail(observation, info)
         self._path = [observation[0:3]]
         self._previous_goal_distance = float(observation[14])
+        self._initial_goal_distance = max(self._previous_goal_distance, 1e-9)
         self._minimum_safety_distance = self._minimum_safety_distance_from(observation, info)
         return observation, self._info(
             info,
@@ -95,12 +97,14 @@ class PyBulletVelocityTrainingEnv:
         )
         truncated = bool(raw_truncated or timed_out)
         self._path.append(observation[0:3])
+        normalized_approach = (self._previous_goal_distance - current_goal_distance) / self._initial_goal_distance
+        normalized_timeliness = -1.0 / float(self.settings.max_steps)
         reward_breakdown = RewardBreakdown(
             arrive=100.0 if reached_goal else 0.0,
-            approach=self._previous_goal_distance - current_goal_distance,
+            approach=normalized_approach,
             obstacle=-100.0 if collided else 0.0,
             smoothness=-0.05 * abs(float(drone_action.heading_delta)),
-            timeliness=-1.0,
+            timeliness=normalized_timeliness,
         )
         self._previous_goal_distance = current_goal_distance
         return (

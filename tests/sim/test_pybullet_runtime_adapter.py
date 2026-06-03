@@ -284,6 +284,37 @@ def test_pybullet_training_env_adds_goal_tail_reward_and_episode_metrics(tmp_pat
     assert step_info["raw_reward"] == -999.0
 
 
+def test_pybullet_training_env_normalizes_reward_for_high_frequency_steps(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_env = FakeSmallProgressVelocityAviary()
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(2.0, 0.0, 0.0),
+        goal_radius=0.2,
+        max_steps=500,
+        max_speed=1.0,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        velocity_aviary_cls=lambda **_: fake_env,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    training_env.reset(seed=15)
+    _, reward, terminated, truncated, step_info = training_env.step(
+        DroneAction(speed=1.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert terminated is False
+    assert truncated is False
+    assert step_info["reward_breakdown"].approach == pytest.approx(0.05 / 2.0)
+    assert step_info["reward_breakdown"].timeliness == pytest.approx(-1.0 / settings.max_steps)
+    assert reward == pytest.approx((0.05 / 2.0) - (1.0 / settings.max_steps))
+
+
 def test_pybullet_training_env_propagates_runtime_collision_and_obstacle_metrics(tmp_path: Path):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
@@ -324,14 +355,12 @@ def test_pybullet_training_env_propagates_runtime_collision_and_obstacle_metrics
     assert step_info["episode_metrics"].minimum_safety_distance == pytest.approx(-0.05)
 
 
-def test_pybullet_training_env_uses_runtime_pybullet_obstacle_tail_without_static_obstacles(
+def test_pybullet_training_env_does_not_enable_builtin_obstacles_without_configured_swift_obstacles(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
-    fake_pybullet = FakePyBulletContacts()
-    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+    captured_kwargs = {}
     settings = SimpleAvoidanceSettings(
         start=(0.0, 0.0, 0.0),
         goal=(10.0, 0.0, 0.0),
@@ -339,21 +368,27 @@ def test_pybullet_training_env_uses_runtime_pybullet_obstacle_tail_without_stati
         max_steps=4,
         safety_margin=0.1,
     )
+
+    def aviary_factory(**kwargs):
+        captured_kwargs["kwargs"] = kwargs
+        return FakeVelocityAviary()
+
     training_env = PyBulletVelocityTrainingEnv(
         simulation_settings=make_settings(tmp_path),
         settings=settings,
         enable_pybullet_obstacles=True,
-        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        velocity_aviary_cls=aviary_factory,
         drone_model=SimpleNamespace(CF2X="cf2x"),
         physics=SimpleNamespace(PYB="pyb"),
     )
 
     observation, reset_info = training_env.reset(seed=31)
 
-    assert observation[10:13] == pytest.approx((0.5, 0.5, 0.5))
-    assert observation[13] == pytest.approx(0.2)
-    assert reset_info["nearest_obstacle_radius"] == pytest.approx(0.2)
-    assert reset_info["minimum_safety_distance"] == pytest.approx(-0.025)
+    assert captured_kwargs["kwargs"]["obstacles"] is False
+    assert training_env._runtime._swift_obstacles == ()
+    assert observation[10:13] == pytest.approx((0.0, 0.0, 0.0))
+    assert observation[13] == pytest.approx(0.0)
+    assert reset_info["minimum_safety_distance"] == pytest.approx(0.0)
 
 
 def test_pybullet_training_env_uses_swift_obstacle_tail_without_builtin_pybullet_obstacles(tmp_path: Path):
@@ -590,6 +625,25 @@ class FakeGoalVelocityAviary:
             False,
             False,
             {"source": "fake-goal"},
+        )
+
+    def close(self):
+        pass
+
+
+class FakeSmallProgressVelocityAviary:
+    def reset(self, seed=None, options=None):
+        return [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 0, 0, 0, 0]], {
+            "seed": seed
+        }
+
+    def step(self, action):
+        return (
+            [[0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.05, 0.0, 0.0, 0, 0, 0, 0]],
+            -999.0,
+            False,
+            False,
+            {"source": "fake-small-progress"},
         )
 
     def close(self):

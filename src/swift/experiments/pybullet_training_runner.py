@@ -15,7 +15,7 @@ from swift.experiments.artifacts import (
     build_run_id,
     checkpoint_filename,
 )
-from swift.rl.ppo import PPOTrainingConfig, PPOTrainingResult, train_ppo_mlp
+from swift.rl.ppo import MLPActorCriticConfig, PPOTrainingConfig, PPOTrainingResult, train_ppo_mlp
 
 if TYPE_CHECKING:
     from swift.config import SimulationSettings, TrainingSettings
@@ -127,9 +127,9 @@ def _training_config(
     history_path: Path | None = None,
 ) -> PPOTrainingConfig:
     total_timesteps = config.total_timesteps or config.training_settings.run.total_timesteps
-    rollout_steps = min(config.training_settings.ppo.rollout_steps, total_timesteps, 64)
+    rollout_steps = min(config.training_settings.ppo.rollout_steps, total_timesteps)
     minibatch_size = min(config.training_settings.ppo.minibatch_size, rollout_steps)
-    update_epochs = min(config.training_settings.ppo.update_epochs, 2)
+    update_epochs = config.training_settings.ppo.update_epochs
     return PPOTrainingConfig(
         total_timesteps=total_timesteps,
         rollout_steps=rollout_steps,
@@ -143,6 +143,10 @@ def _training_config(
         max_grad_norm=config.training_settings.ppo.max_grad_norm,
         seed=config.seed if config.seed is not None else config.training_settings.run.seed,
         torch_num_threads=1,
+        network=MLPActorCriticConfig(
+            max_heading_delta=config.training_settings.policy.max_heading_delta,
+            min_speed_fraction=config.training_settings.policy.min_speed_fraction,
+        ),
         checkpoint_path=checkpoint_path,
         history_path=history_path,
     )

@@ -289,6 +289,7 @@ def _policy_from_mapping(mapping: Mapping[str, Any]) -> MLPBaselinePolicyConfig:
     return MLPBaselinePolicyConfig(
         max_speed=float(mapping.get("max_speed", defaults.max_speed)),
         max_heading_delta=float(mapping.get("max_heading_delta", defaults.max_heading_delta)),
+        min_speed_fraction=float(mapping.get("min_speed_fraction", defaults.min_speed_fraction)),
         max_climb_rate=float(mapping.get("max_climb_rate", defaults.max_climb_rate)),
         obstacle_avoidance_distance=float(
             mapping.get("obstacle_avoidance_distance", defaults.obstacle_avoidance_distance)

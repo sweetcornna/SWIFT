@@ -34,6 +34,7 @@ def _write_training_yaml(path: Path, *, ppo_overrides: str = "") -> None:
                 "policy:",
                 "  max_speed: 2.5",
                 "  max_heading_delta: 0.7",
+                "  min_speed_fraction: 0.35",
                 "  max_climb_rate: 0.8",
                 "  obstacle_avoidance_distance: 3.5",
                 "  avoidance_heading_delta: 0.55",
@@ -96,6 +97,7 @@ def test_load_training_settings_parses_typed_sections_and_obstacles(tmp_path: Pa
         policy=MLPBaselinePolicyConfig(
             max_speed=2.5,
             max_heading_delta=0.7,
+            min_speed_fraction=0.35,
             max_climb_rate=0.8,
             obstacle_avoidance_distance=3.5,
             avoidance_heading_delta=0.55,
@@ -156,6 +158,33 @@ def test_current_training_config_loads_with_defaults_for_missing_sections() -> N
         model="MLP",
         purpose="stable demonstrable baseline before HCA and APF fusion",
     )
+
+
+def test_pybullet_probe_training_config_uses_reachable_physics_horizon() -> None:
+    settings = load_training_settings(Path("configs") / "training_pybullet_probe.yaml")
+
+    assert settings.run.variant == "ppo_mlp_pybullet_probe"
+    assert settings.run.total_timesteps >= 8192
+    assert settings.environment.goal == pytest.approx((0.5, 0.0, 0.1125))
+    assert settings.environment.max_steps >= 600
+    assert settings.environment.max_climb_rate == pytest.approx(0.0)
+    assert settings.environment.obstacles == ()
+    assert 0.15 <= settings.policy.max_heading_delta <= 0.25
+    assert 0.35 <= settings.policy.min_speed_fraction <= 0.5
+
+
+def test_pybullet_obstacle_training_config_uses_explicit_swift_obstacles() -> None:
+    settings = load_training_settings(Path("configs") / "training_pybullet_obstacles.yaml")
+
+    assert settings.run.variant == "ppo_mlp_pybullet_obstacles"
+    assert settings.run.total_timesteps >= 16384
+    assert settings.environment.goal == pytest.approx((0.5, 0.0, 0.1125))
+    assert settings.environment.max_steps >= 600
+    assert settings.environment.max_climb_rate == pytest.approx(0.0)
+    assert 0.15 <= settings.policy.max_heading_delta <= 0.25
+    assert 0.35 <= settings.policy.min_speed_fraction <= 0.5
+    assert settings.environment.obstacles
+    assert all(obstacle.radius < 2.0 for obstacle in settings.environment.obstacles)
 
 
 @pytest.mark.parametrize(

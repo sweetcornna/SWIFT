@@ -368,8 +368,10 @@ def _raw_action_to_drone_action(
     settings: SimpleAvoidanceSettings,
     network_config: MLPActorCriticConfig,
 ) -> DroneAction:
+    min_speed_fraction = float(getattr(network_config, "min_speed_fraction", 0.0))
+    speed_fraction = min_speed_fraction + torch.sigmoid(raw_action[0]).item() * (1.0 - min_speed_fraction)
     return DroneAction(
-        speed=float(torch.sigmoid(raw_action[0]).item() * settings.max_speed),
+        speed=float(speed_fraction * settings.max_speed),
         heading_delta=float(torch.tanh(raw_action[1]).item() * network_config.max_heading_delta),
         climb_rate=float(torch.tanh(raw_action[2]).item() * settings.max_climb_rate),
     )
