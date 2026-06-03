@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,8 @@ from swift.experiments.tuning_runner import (
     TuningRunConfig,
     run_stage1_policy_search,
 )
+from swift.envs import SimpleAvoidanceEnv
+from swift.rl.mlp_baseline import MLPBaselinePolicy, MLPBaselinePolicyConfig
 
 
 DEFAULT_BOUNDARY_NOTES = (
@@ -132,6 +134,10 @@ def run_multi_scenario_evaluation(config: MultiScenarioEvaluationConfig | None =
     paths = writer.paths_for(run_config.stage, run_config.variant, run_id)
     output_path = run_config.output or paths.summary_json
     manifest_path = output_path.with_suffix(".manifest.json") if run_config.output is not None else paths.manifest_json
+    metrics_table_path = output_path.with_suffix(".metrics.json")
+    trajectory_path = (
+        output_path.with_suffix(".trajectories.jsonl") if run_config.output is not None else paths.episode_jsonl
+    )
     scenario_results = [_evaluate_scenario(case, run_config) for case in run_config.scenarios]
     scenario_reports = [result["report"] for result in scenario_results]
     ranking = _global_candidate_ranking(scenario_results)
@@ -144,6 +150,8 @@ def run_multi_scenario_evaluation(config: MultiScenarioEvaluationConfig | None =
         "policy_search": "stage1_deterministic_mlp_policy_search",
         "source_runner": "swift.experiments.tuning_runner.run_stage1_policy_search",
         "simulator": "swift.simple_avoidance",
+        "trajectory_capture": "deterministic_rerun_of_selected_policy",
+        "seed_semantics": "simple_avoidance_seed_recorded_for_provenance_only",
     }
     report = {
         "schema_version": 1,
@@ -180,13 +188,21 @@ def run_multi_scenario_evaluation(config: MultiScenarioEvaluationConfig | None =
         "boundary_notes": list(DEFAULT_BOUNDARY_NOTES),
         "artifact_refs": {
             "summary_json": str(output_path),
+            "metrics_table_json": str(metrics_table_path),
+            "trajectory_jsonl": str(trajectory_path),
             "manifest_json": str(manifest_path),
         },
         "artifacts": {
             "summary_json": str(output_path),
+            "metrics_table_json": str(metrics_table_path),
+            "trajectory_jsonl": str(trajectory_path),
             "manifest_json": str(manifest_path),
         },
     }
+    metrics_table = _metrics_table(run_id, run_config, scenario_reports)
+    trajectory_records = _trajectory_records(run_id, run_config, scenario_results)
+    writer.write_summary(metrics_table_path, metrics_table)
+    _write_jsonl(trajectory_path, trajectory_records)
     writer.write_summary(output_path, report)
     writer.write_manifest(
         manifest_path,
@@ -196,7 +212,11 @@ def run_multi_scenario_evaluation(config: MultiScenarioEvaluationConfig | None =
             stage=run_config.stage,
             variant=run_config.variant,
             lineage=lineage,
-            outputs=[artifact_reference(output_path, role="multi_scenario_report")],
+            outputs=[
+                artifact_reference(output_path, role="multi_scenario_report"),
+                artifact_reference(metrics_table_path, role="metrics_table_json"),
+                artifact_reference(trajectory_path, role="trajectory_jsonl"),
+            ],
         ),
     )
     return json.loads(output_path.read_text(encoding="utf-8"))
@@ -229,6 +249,8 @@ def _evaluate_scenario(case: ScenarioCase, config: MultiScenarioEvaluationConfig
             "policy_family": "deterministic_mlp_policy_search",
             "candidate_count": result["acceptance"]["candidate_count"],
             "minimum_safety_distance": minimum_safety_distance,
+            "trajectory_capture": "deterministic_rerun_of_selected_policy",
+            "seed_semantics": "simple_avoidance_seed_recorded_for_provenance_only",
         },
         "baseline": result["baseline"],
         "best_candidate": best_candidate,
@@ -238,10 +260,116 @@ def _evaluate_scenario(case: ScenarioCase, config: MultiScenarioEvaluationConfig
         "failure_breakdown": _failure_breakdown(metrics, minimum_safety_distance),
     }
     return {
+        "case": case,
         "scenario_id": case.identifier,
         "report": report,
         "full_candidates": full_candidates,
     }
+
+
+def _metrics_table(
+    run_id: str,
+    config: MultiScenarioEvaluationConfig,
+    scenarios: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "record_type": "multi_scenario_metrics_table",
+        "stage": config.stage,
+        "variant": config.variant,
+        "run_id": run_id,
+        "evaluation_level": "deterministic_multi_scenario_tuning",
+        "rows": [
+            {
+                "scenario_id": scenario["scenario_id"],
+                "scenario_matrix": scenario["scenario_matrix"],
+                "run_provenance": scenario["run_provenance"],
+                "acceptance": scenario["acceptance"],
+                "metrics": scenario["metrics"],
+                "failure_breakdown": scenario["failure_breakdown"],
+            }
+            for scenario in scenarios
+        ],
+    }
+
+
+def _trajectory_records(
+    run_id: str,
+    config: MultiScenarioEvaluationConfig,
+    scenario_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for scenario_result in scenario_results:
+        case = scenario_result["case"]
+        report = scenario_result["report"]
+        assert isinstance(case, ScenarioCase)
+        assert isinstance(report, dict)
+        policy_config = _trajectory_policy_config(report)
+        env_settings = case.scenario.build_settings().replace(
+            max_speed=policy_config.max_speed,
+            max_climb_rate=policy_config.max_climb_rate,
+        )
+        env = SimpleAvoidanceEnv(env_settings)
+        policy = MLPBaselinePolicy(policy_config)
+        observation, _ = env.reset(seed=case.seed)
+        terminated = False
+        truncated = False
+        step_index = 0
+        while not terminated and not truncated:
+            action = policy.act(observation)
+            observation, reward, terminated, truncated, info = env.step(action)
+            drone_state = info["drone_state"]
+            reward_breakdown = info["reward_breakdown"]
+            record = {
+                "schema_version": 1,
+                "record_type": "scenario_trajectory_step",
+                "stage": config.stage,
+                "variant": config.variant,
+                "run_id": run_id,
+                "scenario_id": case.identifier,
+                "step_index": step_index,
+                "state": {
+                    "position": list(drone_state.position),
+                    "velocity": list(drone_state.velocity),
+                    "yaw": float(drone_state.yaw),
+                },
+                "action": asdict(action),
+                "reward": float(reward),
+                "reward_breakdown": asdict(reward_breakdown),
+                "terminated": bool(terminated),
+                "truncated": bool(truncated),
+                "goal_distance": float(observation[14]),
+                "obstacles": [
+                    {
+                        "position": list(obstacle.position),
+                        "radius": float(obstacle.radius),
+                        "velocity": list(obstacle.velocity),
+                    }
+                    for obstacle in info["obstacles"]
+                ],
+            }
+            if "episode_metrics" in info:
+                record["episode_metrics"] = asdict(info["episode_metrics"])
+            records.append(record)
+            step_index += 1
+    return records
+
+
+def _trajectory_policy_config(report: dict[str, Any]) -> MLPBaselinePolicyConfig:
+    best_candidate = report["best_candidate"]
+    if isinstance(best_candidate, dict):
+        config = best_candidate["config"]
+    else:
+        config = report["baseline"]["config"]
+    assert isinstance(config, dict)
+    return MLPBaselinePolicyConfig(**config)
+
+
+def _write_jsonl(path: str | Path, records: list[dict[str, Any]]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = "".join(json.dumps(record, allow_nan=False, sort_keys=True) + "\n" for record in records)
+    target.write_text(payload, encoding="utf-8")
 
 
 def _scenario_matrix(case: ScenarioCase) -> dict[str, Any]:

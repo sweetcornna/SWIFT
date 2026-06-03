@@ -42,6 +42,8 @@ def test_multi_scenario_evaluation_writes_ranked_stage4_report_and_manifest(tmp_
     assert report["readiness"]["all_scenarios_evaluated"] is True
     assert report["readiness"]["convergence_claim"] is False
     assert report["readiness"]["evidence_level"] == "deterministic_multi_scenario_tuning"
+    assert report["lineage"]["trajectory_capture"] == "deterministic_rerun_of_selected_policy"
+    assert report["lineage"]["seed_semantics"] == "simple_avoidance_seed_recorded_for_provenance_only"
     assert report["summary"]["scenario_count"] == 2
     assert report["summary"]["candidate_count"] == 8
     assert report["summary"]["globally_accepted_candidate_count"] >= 1
@@ -79,6 +81,8 @@ def test_multi_scenario_evaluation_writes_ranked_stage4_report_and_manifest(tmp_
             "environment_adapter",
             "policy_family",
             "minimum_safety_distance",
+            "trajectory_capture",
+            "seed_semantics",
         }
         for scenario in report["scenarios"]
     )
@@ -103,12 +107,54 @@ def test_multi_scenario_evaluation_writes_ranked_stage4_report_and_manifest(tmp_
     assert "NaN" not in raw_report
     assert "Infinity" not in raw_report
 
+    metrics_table_path = Path(report["artifacts"]["metrics_table_json"])
+    assert metrics_table_path.exists()
+    metrics_table = json.loads(metrics_table_path.read_text(encoding="utf-8"))
+    assert metrics_table["record_type"] == "multi_scenario_metrics_table"
+    assert [row["scenario_id"] for row in metrics_table["rows"]] == ["fixed-obstacle", "open-corridor"]
+    assert all("minimum_safety_distance" in row["metrics"] for row in metrics_table["rows"])
+
+    trajectory_path = Path(report["artifacts"]["trajectory_jsonl"])
+    assert trajectory_path.exists()
+    trajectory_records = [
+        json.loads(line)
+        for line in trajectory_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert {record["record_type"] for record in trajectory_records} == {"scenario_trajectory_step"}
+    assert {record["scenario_id"] for record in trajectory_records} == {"fixed-obstacle", "open-corridor"}
+    assert all("position" in record["state"] for record in trajectory_records)
+    assert all("action" in record for record in trajectory_records)
+    assert any("episode_metrics" in record for record in trajectory_records)
+    terminal_by_scenario = {
+        record["scenario_id"]: record["episode_metrics"]
+        for record in trajectory_records
+        if "episode_metrics" in record
+    }
+    metrics_by_scenario = {scenario["scenario_id"]: scenario["metrics"] for scenario in report["scenarios"]}
+    assert set(terminal_by_scenario) == set(metrics_by_scenario)
+    for scenario_id, terminal_metrics in terminal_by_scenario.items():
+        scenario_metrics = metrics_by_scenario[scenario_id]
+        assert terminal_metrics["reached_goal"] == scenario_metrics["success"]
+        assert terminal_metrics["collided"] == scenario_metrics["collided"]
+        assert terminal_metrics["timed_out"] == scenario_metrics["timed_out"]
+        assert terminal_metrics["path_length"] == pytest.approx(scenario_metrics["path_length"])
+        assert terminal_metrics["path_smoothness"] == pytest.approx(scenario_metrics["path_smoothness"])
+        assert terminal_metrics["minimum_safety_distance"] == pytest.approx(
+            scenario_metrics["minimum_safety_distance"]
+        )
+        assert terminal_metrics["steps"] == scenario_metrics["steps"]
+
     manifest_path = Path(report["artifacts"]["manifest_json"])
     assert manifest_path.exists()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["subject_record_type"] == "multi_scenario_evaluation_report"
     assert manifest["lineage"]["evaluation_level"] == "deterministic_multi_scenario_tuning"
-    assert {reference["role"] for reference in manifest["outputs"]} == {"multi_scenario_report"}
+    assert {reference["role"] for reference in manifest["outputs"]} == {
+        "metrics_table_json",
+        "multi_scenario_report",
+        "trajectory_jsonl",
+    }
 
 
 def test_open_corridor_scenario_uses_effective_zero_safety_threshold(tmp_path: Path):
