@@ -9,7 +9,14 @@ torch = pytest.importorskip("torch")
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceEnv, SimpleAvoidanceSettings
 from swift.rl.ppo import MLPActorCriticConfig, PPOTrainingConfig
-from swift.rl.torch_ppo import MLPActorCritic, compute_gae, sample_action, train_ppo_mlp
+from swift.rl.torch_ppo import (
+    MLPActorCritic,
+    compute_gae,
+    deterministic_action,
+    load_ppo_mlp_checkpoint,
+    sample_action,
+    train_ppo_mlp,
+)
 
 
 def test_actor_critic_outputs_actor_and_value_shapes():
@@ -158,3 +165,42 @@ def test_train_ppo_mlp_writes_checkpoint_and_update_history(tmp_path: Path):
     assert "state" in checkpoint["optimizer_state_dict"]
     assert "torch_cpu" in checkpoint["rng_state"]
     assert isinstance(checkpoint["rng_state"]["python"], tuple)
+
+
+def test_load_checkpoint_reconstructs_model_for_deterministic_action(tmp_path: Path):
+    def make_env():
+        return SimpleAvoidanceEnv(SimpleAvoidanceSettings(max_steps=8, goal=(4.0, 0.0, 0.0)))
+
+    checkpoint_path = tmp_path / "ppo.ckpt"
+    train_ppo_mlp(
+        make_env,
+        PPOTrainingConfig(
+            total_timesteps=64,
+            rollout_steps=32,
+            minibatch_size=16,
+            update_epochs=1,
+            torch_num_threads=1,
+            seed=123,
+            network=MLPActorCriticConfig(hidden_sizes=(8,)),
+            checkpoint_path=checkpoint_path,
+        ),
+    )
+    env = make_env()
+    observation, _ = env.reset(seed=123)
+
+    model, checkpoint = load_ppo_mlp_checkpoint(checkpoint_path)
+    action = deterministic_action(model, observation, env.settings, model.config)
+
+    assert checkpoint["record_type"] == "ppo_checkpoint"
+    assert model.config.hidden_sizes == (8,)
+    assert 0.0 <= action.speed <= env.settings.max_speed
+    assert -model.config.max_heading_delta <= action.heading_delta <= model.config.max_heading_delta
+    assert -env.settings.max_climb_rate <= action.climb_rate <= env.settings.max_climb_rate
+
+
+def test_load_checkpoint_rejects_wrong_record_type(tmp_path: Path):
+    checkpoint_path = tmp_path / "bad.ckpt"
+    torch.save({"record_type": "not_ppo_checkpoint"}, checkpoint_path)
+
+    with pytest.raises(ValueError, match="ppo_checkpoint"):
+        load_ppo_mlp_checkpoint(checkpoint_path)

@@ -23,7 +23,8 @@ and the selected candidate reaches the goal safely.
 
 The current artifact surface includes strict PPO summary JSON, update-history
 JSONL, a Torch checkpoint containing model, optimizer, and RNG state, the
-deterministic tuning JSON, and a combined Stage 1 training/tuning report.
+deterministic checkpoint evaluation JSON, the deterministic tuning JSON, and a
+combined Stage 1 training/tuning report.
 
 ## Stage 2: PPO+HCA Upgrade
 

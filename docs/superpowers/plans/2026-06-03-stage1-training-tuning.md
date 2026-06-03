@@ -25,6 +25,7 @@
 - [x] Add `TorchUnavailableError`, `MLPActorCriticConfig`, `PPOTrainingConfig`, `PPOTrainingResult`, and lazy `train_ppo_mlp(...)`.
 - [x] Implement `torch_ppo.py` with MLP actor-critic, diagonal Gaussian sampling, action scaling, rollout collection, GAE, PPO clipped loss, and finite result metrics.
 - [x] Persist strict update-history JSONL and a checkpoint containing model, optimizer, and RNG state.
+- [x] Load checkpoints back into an MLP actor-critic and evaluate them deterministically.
 - [x] Verify: `python -m pytest tests\rl\test_ppo_optional.py tests\rl\test_torch_ppo.py -q`.
 
 ## Task 2: Artifact Writer And Evaluation Metrics
@@ -81,6 +82,7 @@
 - [x] `python scripts\swift_healthcheck.py`
 - [x] `python scripts\run_pybullet_smoke.py --check-only`
 - [x] `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json`
+- [x] `python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json`
 - [x] `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json`
 - [x] `python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json`
 - [ ] Confirm `git status -sb` is clean after committing and pushing.

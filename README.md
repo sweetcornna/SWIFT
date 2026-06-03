@@ -34,6 +34,12 @@ python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.jso
 
 The PPO smoke also writes an update-by-update training history JSONL under
 `outputs\episodes\...` and a resumable checkpoint under `checkpoints\...`.
+Use the `checkpoint_path` recorded in the PPO summary to run deterministic
+checkpoint evaluation:
+
+```powershell
+python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json
+```
 
 ## Repository Boundary
 

@@ -66,6 +66,31 @@ def sample_action(
     )
 
 
+def deterministic_action(
+    model: MLPActorCritic,
+    observation: Sequence[float],
+    settings: SimpleAvoidanceSettings,
+    network_config: MLPActorCriticConfig,
+) -> DroneAction:
+    observation_tensor = _observation_tensor(observation)
+    model.eval()
+    with torch.no_grad():
+        action_means, _ = model(observation_tensor.unsqueeze(0))
+    return _raw_action_to_drone_action(action_means[0].detach().cpu(), settings, network_config)
+
+
+def load_ppo_mlp_checkpoint(path: str | Path) -> tuple[MLPActorCritic, dict[str, Any]]:
+    checkpoint_path = Path(path)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    if checkpoint.get("record_type") != "ppo_checkpoint":
+        raise ValueError("checkpoint record_type must be ppo_checkpoint")
+    network_config = MLPActorCriticConfig(**checkpoint["network_config"])
+    model = MLPActorCritic(network_config).to(torch.device("cpu"))
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+    return model, checkpoint
+
+
 def compute_gae(
     rewards: torch.Tensor,
     values: torch.Tensor,

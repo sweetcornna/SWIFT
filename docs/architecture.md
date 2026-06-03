@@ -19,7 +19,7 @@ simulation substrate.
    training implementation loaded lazily.
 6. Experiment layer: ablation variants, metric naming, strict JSON artifacts,
    update-history JSONL, checkpoints, training smoke runners, deterministic
-   tuning reports, and Stage 1 evidence aggregation.
+   checkpoint evaluation, tuning reports, and Stage 1 evidence aggregation.
 
 ## Integration Rule
 

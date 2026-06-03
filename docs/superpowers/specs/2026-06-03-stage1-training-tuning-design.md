@@ -39,6 +39,13 @@ payload. `scripts/run_ppo_mlp_smoke.py` exposes this as a Windows-friendly CLI.
 The runner now writes strict update-history JSONL and a Torch checkpoint with
 model, optimizer, and RNG state for audit and resume preparation.
 
+### Checkpoint Evaluation CLI
+
+`src/swift/experiments/ppo_checkpoint_evaluator.py` loads a PPO checkpoint and
+runs deterministic mean-action episodes against `SimpleAvoidanceEnv`.
+`scripts/run_ppo_checkpoint_eval.py` exposes this as a CLI so checkpoints are
+consumable evidence, not only saved files.
+
 ### Tuning Runner And CLI
 
 `src/swift/experiments/tuning_runner.py` evaluates the deterministic
@@ -59,6 +66,7 @@ exposes this as a CLI.
 - `python scripts\swift_healthcheck.py` passes.
 - `python scripts\run_pybullet_smoke.py --check-only` passes.
 - `python scripts\run_ppo_mlp_smoke.py --total-timesteps 128 --output outputs\training\ppo_smoke.json` exits 0 and writes finite metrics.
+- `python scripts\run_ppo_checkpoint_eval.py --checkpoint <checkpoint_path> --episodes 3 --output outputs\evaluation\ppo_checkpoint_eval.json` exits 0 for the checkpoint path recorded in the PPO summary.
 - `python scripts\run_stage1_tuning.py --output outputs\tuning\stage1_grid.json` exits 0 and reports collision-to-success improvement.
 - `python scripts\run_stage1_report.py --ppo-summary outputs\training\ppo_smoke.json --tuning-summary outputs\tuning\stage1_grid.json --output outputs\reports\stage1_training_tuning_report.json` exits 0 and reports collision-to-success readiness.
 - Generated `outputs/` and `checkpoints/` artifacts remain ignored by Git.
