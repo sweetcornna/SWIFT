@@ -16,6 +16,7 @@ def sample_pybullet_obstacles(
     environment: SimpleAvoidanceSettings,
     *,
     seed: int,
+    phase_name: str = "final",
 ) -> tuple[ObstacleState, ...]:
     if not randomization.enabled:
         return environment.obstacles
@@ -39,14 +40,20 @@ def sample_pybullet_obstacles(
         if len(obstacles) != count:
             continue
         if randomization.require_path_blocker and not any(
-            _blocks_direct_path(obstacle, environment) for obstacle in obstacles
+            _blocks_direct_path(obstacle, randomization, environment) for obstacle in obstacles
         ):
             continue
         return tuple(obstacles)
 
+    required_endpoint_clearance = (
+        environment.safety_margin + randomization.vehicle_radius + randomization.endpoint_clearance
+    )
     raise RuntimeError(
         "Unable to sample a feasible PyBullet obstacle layout "
-        f"for seed={int(seed)} after {randomization.max_sampling_attempts} attempts"
+        f"for seed={int(seed)} phase={str(phase_name)} "
+        f"obstacle_count={randomization.min_obstacles}..{randomization.max_obstacles} "
+        f"required_endpoint_clearance={required_endpoint_clearance:.3f} "
+        f"after {randomization.max_sampling_attempts} attempts"
     )
 
 
@@ -56,7 +63,12 @@ def _valid_candidate(
     randomization: PyBulletObstacleRandomizationSettings,
     environment: SimpleAvoidanceSettings,
 ) -> bool:
-    endpoint_distance = candidate.radius + environment.safety_margin + randomization.endpoint_clearance
+    endpoint_distance = (
+        candidate.radius
+        + randomization.vehicle_radius
+        + environment.safety_margin
+        + randomization.endpoint_clearance
+    )
     if math.dist(candidate.position, environment.start) < endpoint_distance:
         return False
     if math.dist(candidate.position, environment.goal) < endpoint_distance:
@@ -68,7 +80,11 @@ def _valid_candidate(
     )
 
 
-def _blocks_direct_path(obstacle: ObstacleState, environment: SimpleAvoidanceSettings) -> bool:
+def _blocks_direct_path(
+    obstacle: ObstacleState,
+    randomization: PyBulletObstacleRandomizationSettings,
+    environment: SimpleAvoidanceSettings,
+) -> bool:
     start = environment.start
     goal = environment.goal
     segment = tuple(goal[index] - start[index] for index in range(3))
@@ -79,4 +95,6 @@ def _blocks_direct_path(obstacle: ObstacleState, environment: SimpleAvoidanceSet
     projection = sum(offset[index] * segment[index] for index in range(3)) / segment_length_squared
     projection = max(0.0, min(1.0, projection))
     nearest = tuple(start[index] + projection * segment[index] for index in range(3))
-    return math.dist(obstacle.position, nearest) <= obstacle.radius + environment.safety_margin
+    return math.dist(obstacle.position, nearest) <= (
+        obstacle.radius + randomization.vehicle_radius + environment.safety_margin
+    )

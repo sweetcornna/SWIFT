@@ -21,6 +21,7 @@ def test_randomized_obstacles_are_deterministic_and_satisfy_constraints() -> Non
         radius_range=(0.04, 0.08),
         endpoint_clearance=0.02,
         inter_obstacle_clearance=0.02,
+        vehicle_radius=0.061,
         require_path_blocker=True,
         max_sampling_attempts=256,
     )
@@ -41,7 +42,12 @@ def test_randomized_obstacles_are_deterministic_and_satisfy_constraints() -> Non
         assert -0.30 <= y <= 0.30
         assert z == pytest.approx(0.1125)
         assert 0.04 <= obstacle.radius <= 0.08
-        required_endpoint_distance = obstacle.radius + environment.safety_margin + 0.02
+        required_endpoint_distance = (
+            obstacle.radius
+            + randomization.vehicle_radius
+            + environment.safety_margin
+            + randomization.endpoint_clearance
+        )
         assert math.dist(obstacle.position, environment.start) >= required_endpoint_distance
         assert math.dist(obstacle.position, environment.goal) >= required_endpoint_distance
     for index, obstacle in enumerate(first):
@@ -51,7 +57,8 @@ def test_randomized_obstacles_are_deterministic_and_satisfy_constraints() -> Non
             )
     assert any(
         environment.start[0] <= obstacle.position[0] <= environment.goal[0]
-        and abs(obstacle.position[1]) <= obstacle.radius + environment.safety_margin
+        and abs(obstacle.position[1])
+        <= obstacle.radius + randomization.vehicle_radius + environment.safety_margin
         for obstacle in first
     )
 
@@ -87,9 +94,16 @@ def test_randomized_obstacles_report_impossible_constraints() -> None:
         z=0.0,
         radius_range=(0.08, 0.08),
         endpoint_clearance=0.02,
+        vehicle_radius=0.061,
         max_sampling_attempts=1,
     )
     environment = SimpleAvoidanceSettings(start=(0.0, 0.0, 0.0), goal=(0.5, 0.0, 0.0), safety_margin=0.1)
 
-    with pytest.raises(RuntimeError, match="seed=9"):
-        sample_pybullet_obstacles(randomization, environment, seed=9)
+    with pytest.raises(RuntimeError) as error:
+        sample_pybullet_obstacles(randomization, environment, seed=9, phase_name="single_blocker")
+
+    message = str(error.value)
+    assert "seed=9" in message
+    assert "phase=single_blocker" in message
+    assert "required_endpoint_clearance=0.181" in message
+    assert "obstacle_count=1..1" in message
