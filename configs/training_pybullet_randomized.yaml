@@ -13,7 +13,7 @@ baseline:
   purpose: PyBullet randomized static-obstacle robustness training
 policy:
   max_speed: 1.0
-  max_heading_delta: 0.2
+  max_heading_delta: 0.02
   min_speed_fraction: 0.4
   max_climb_rate: 0.0
   obstacle_avoidance_distance: 2.0

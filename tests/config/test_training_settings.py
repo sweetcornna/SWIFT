@@ -370,6 +370,7 @@ def test_pybullet_randomized_training_config_uses_strict_robustness_defaults() -
     assert settings.environment.goal == pytest.approx((0.5, 0.0, 0.1125))
     assert settings.environment.safety_margin == pytest.approx(0.1)
     assert settings.environment.obstacles == ()
+    assert settings.policy.max_heading_delta == pytest.approx(0.02)
     assert randomization.enabled is True
     assert (randomization.min_obstacles, randomization.max_obstacles) == (1, 3)
     assert randomization.x_range == pytest.approx((0.12, 0.38))
