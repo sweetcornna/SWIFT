@@ -7,7 +7,13 @@ from types import SimpleNamespace
 import pytest
 
 import swift.sim.pybullet_runtime as pybullet_runtime
-from swift.config import SimulationSettings
+from swift.config import (
+    PyBulletCurriculumPhaseSettings,
+    PyBulletCurriculumSettings,
+    PyBulletObstacleRandomizationSettings,
+    PyBulletRewardSettings,
+    SimulationSettings,
+)
 from swift.core import DroneAction, ObstacleState
 from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceSettings
 from swift.sim.pybullet_runtime import (
@@ -323,6 +329,7 @@ def test_pybullet_training_env_normalizes_reward_for_high_frequency_steps(tmp_pa
     training_env = PyBulletVelocityTrainingEnv(
         simulation_settings=make_settings(tmp_path),
         settings=settings,
+        reward_settings=PyBulletRewardSettings(approach_scale=20.0),
         velocity_aviary_cls=lambda **_: fake_env,
         drone_model=SimpleNamespace(CF2X="cf2x"),
         physics=SimpleNamespace(PYB="pyb"),
@@ -335,9 +342,73 @@ def test_pybullet_training_env_normalizes_reward_for_high_frequency_steps(tmp_pa
 
     assert terminated is False
     assert truncated is False
-    assert step_info["reward_breakdown"].approach == pytest.approx(0.05 / 2.0)
+    assert step_info["reward_breakdown"].approach == pytest.approx((0.05 / 2.0) * 20.0)
     assert step_info["reward_breakdown"].timeliness == pytest.approx(-1.0 / settings.max_steps)
-    assert reward == pytest.approx((0.05 / 2.0) - (1.0 / settings.max_steps))
+    assert reward == pytest.approx(((0.05 / 2.0) * 20.0) - (1.0 / settings.max_steps))
+
+
+def test_pybullet_training_env_applies_timeout_penalty_once(tmp_path: Path):
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(2.0, 0.0, 0.0),
+        goal_radius=0.2,
+        max_steps=1,
+        max_speed=1.0,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        reward_settings=PyBulletRewardSettings(
+            approach_scale=20.0,
+            timeout_penalty=20.0,
+            episode_time_penalty=1.0,
+        ),
+        velocity_aviary_cls=lambda **_: FakeSmallProgressVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    training_env.reset(seed=16)
+    _, reward, terminated, truncated, step_info = training_env.step(
+        DroneAction(speed=1.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert terminated is False
+    assert truncated is True
+    assert step_info["timed_out"] is True
+    assert step_info["reward_breakdown"].timeliness == pytest.approx(-21.0)
+    assert reward == pytest.approx(step_info["reward_breakdown"].total)
+
+
+def test_pybullet_training_env_collision_takes_precedence_over_goal(tmp_path: Path):
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.0),
+        goal=(1.0, 0.0, 0.0),
+        goal_radius=0.2,
+        max_steps=4,
+        max_speed=1.0,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        reward_settings=PyBulletRewardSettings(),
+        velocity_aviary_cls=lambda **_: FakeGoalCollisionVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    training_env.reset(seed=18)
+    _, reward, terminated, truncated, step_info = training_env.step(
+        DroneAction(speed=1.0, heading_delta=0.0, climb_rate=0.0)
+    )
+
+    assert terminated is True
+    assert truncated is False
+    assert step_info["collided"] is True
+    assert step_info["reached_goal"] is False
+    assert step_info["reward_breakdown"].arrive == pytest.approx(0.0)
+    assert step_info["reward_breakdown"].obstacle == pytest.approx(-100.0)
+    assert reward == pytest.approx(step_info["reward_breakdown"].total)
 
 
 def test_pybullet_training_env_propagates_runtime_collision_and_obstacle_metrics(tmp_path: Path):
@@ -587,6 +658,52 @@ def test_pybullet_training_env_randomizes_obstacles_from_reset_seed(
     assert fake_pybullet.multi_bodies[0][1] == fake_pybullet.multi_bodies[1][1]
 
 
+def test_pybullet_training_env_snapshots_curriculum_phase_on_reset(tmp_path: Path):
+    curriculum = PyBulletCurriculumSettings(
+        enabled=True,
+        phases=(
+            PyBulletCurriculumPhaseSettings("goal_reaching", 0.20, 0, 0, False),
+            PyBulletCurriculumPhaseSettings("single_obstacle", 0.40, 1, 1, False),
+            PyBulletCurriculumPhaseSettings("single_blocker", 0.70, 1, 1, True),
+            PyBulletCurriculumPhaseSettings("randomized_final", 1.00, 1, 3, True),
+        ),
+    )
+    randomization = PyBulletObstacleRandomizationSettings(
+        enabled=True,
+        vehicle_radius=0.061,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=SimpleAvoidanceSettings(
+            start=(0.0, 0.0, 0.1125),
+            goal=(0.5, 0.0, 0.1125),
+            safety_margin=0.1,
+        ),
+        obstacle_randomization=randomization,
+        reward_settings=PyBulletRewardSettings(),
+        curriculum=curriculum,
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    _, default_info = training_env.reset(seed=500000)
+    training_env.set_training_progress(0, 100)
+    _, first_info = training_env.reset(seed=500001)
+    training_env.set_training_progress(80, 100)
+    _, final_info = training_env.reset(seed=500002)
+
+    assert default_info["curriculum_phase"] == "randomized_final"
+    assert default_info["curriculum_progress"] == pytest.approx(1.0)
+    assert 1 <= default_info["obstacle_count"] <= 3
+    assert first_info["curriculum_phase"] == "goal_reaching"
+    assert first_info["curriculum_progress"] == pytest.approx(0.0)
+    assert first_info["obstacle_count"] == 0
+    assert final_info["curriculum_phase"] == "randomized_final"
+    assert final_info["curriculum_progress"] == pytest.approx(0.8)
+    assert 1 <= final_info["obstacle_count"] <= 3
+
+
 def test_pybullet_training_env_passes_configured_obstacles_to_runtime_when_enabled(tmp_path: Path):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
@@ -726,6 +843,13 @@ class FakeGoalVelocityAviary:
 
     def close(self):
         pass
+
+
+class FakeGoalCollisionVelocityAviary(FakeGoalVelocityAviary):
+    def step(self, action):
+        observation, reward, terminated, truncated, info = super().step(action)
+        info.update({"collided": True, "minimum_safety_distance": -0.01})
+        return observation, reward, terminated, truncated, info
 
 
 class FakeSmallProgressVelocityAviary:
