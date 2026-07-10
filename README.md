@@ -371,33 +371,39 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ch
 
 ### 10.4 randomized PyBullet robustness training
 
-固定单障碍达到目标后，使用每回合可复现的随机静态障碍继续验证跨布局鲁棒性。正式配置会生成 1–3 个球形障碍，并保证至少一个障碍进入起终点直线路径的安全走廊。
+随机训练使用四阶段课程：无障碍、单个可选障碍、单个路径阻挡障碍、最终 1–3 个随机障碍。CF2X 的 `0.061 m` 碰撞外廓会参与起点、目标点和路径阻挡判定。
 
-先检查完整任务参数，不启动训练：
+seed 范围必须隔离：
 
-```powershell
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --training-config configs\training_pybullet_randomized.yaml --seeds 8 9 10 --total-timesteps 100000 --output outputs\training\pybullet_randomized_3x100k.json --dry-run
-```
+- `500000..500099`：开发验证，可用于 pilot 和参数选择。
+- `1000000..1000099`：历史实验已经消费，不得再次用于调参或最终声明。
+- `2000000..2000099`：保留给最终 checkpoint，每个 checkpoint 只评估一次。
 
-运行三个训练种子，每个种子 100k steps：
-
-```powershell
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --training-config configs\training_pybullet_randomized.yaml --seeds 8 9 10 --total-timesteps 100000 --output outputs\training\pybullet_randomized_3x100k.json
-```
-
-三个 checkpoint 使用相同的 100 个未见布局做 holdout 评估：
+先验证 100 个最终阶段布局的真实 PyBullet 初始净空：
 
 ```powershell
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_randomized_3x100k.json --training-config configs\training_pybullet_randomized.yaml --episodes 100 --holdout-seed 1000000 --output outputs\evaluation\pybullet_randomized_3x100k_holdout.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_geometry_check.py --seed 500000 --scenarios 100 --output outputs\evaluation\pybullet_curriculum_geometry_validation.json --fail-on-invalid
 ```
 
-应用最差种子严格门槛：
+几何门禁通过后依次运行 `2,048` smoke、`32,768` pilot 和 `100,000` candidate：
 
 ```powershell
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_robustness_gate.py --input outputs\evaluation\pybullet_randomized_3x100k_holdout.json --output outputs\evaluation\pybullet_randomized_3x100k_gate.json --fail-on-reject
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --seeds 8 --total-timesteps 2048 --output outputs\training\pybullet_curriculum_smoke_1x2048.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --seeds 8 --total-timesteps 32768 --output outputs\training\pybullet_curriculum_pilot_1x32768.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_curriculum_pilot_1x32768.json --episodes 20 --holdout-seed 500000 --output outputs\evaluation\pybullet_curriculum_pilot_validation.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --seeds 8 --total-timesteps 100000 --output outputs\training\pybullet_curriculum_candidate_1x100k.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_curriculum_candidate_1x100k.json --episodes 100 --holdout-seed 500000 --output outputs\evaluation\pybullet_curriculum_candidate_validation.json
 ```
 
-默认门槛为：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。gate 失败时仍会写出报告，但不会形成 robustness claim。
+只有 candidate 达到成功率 `>=0.80`、碰撞率 `<=0.05`、超时率 `<=0.20` 才启动完整训练：
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --seeds 8 9 10 --total-timesteps 150000 --output outputs\training\pybullet_curriculum_3x150k.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_curriculum_3x150k.json --episodes 100 --holdout-seed 2000000 --output outputs\evaluation\pybullet_curriculum_3x150k_final_holdout.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_robustness_gate.py --input outputs\evaluation\pybullet_curriculum_3x150k_final_holdout.json --output outputs\evaluation\pybullet_curriculum_3x150k_gate.json --fail-on-reject
+```
+
+严格门槛保持不变：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。gate 失败仍会写报告，但不形成 robustness claim；仿真鲁棒性也不等于真实飞行安全证据。
 
 ## 11. 产物在哪里
 

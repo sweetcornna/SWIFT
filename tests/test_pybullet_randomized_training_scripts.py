@@ -13,6 +13,26 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_pybullet_multi_seed_training_script_uses_yaml_timestep_default() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_pybullet_multi_seed_training.py",
+            "--training-config",
+            "configs/training_pybullet_randomized.yaml",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "total_timesteps=150000" in result.stdout
+    assert "pybullet_randomized_3x150k.json" in result.stdout
+
+
 def test_pybullet_geometry_check_script_dry_run() -> None:
     result = subprocess.run(
         [
@@ -140,6 +160,38 @@ def test_pybullet_multi_seed_checkpoint_eval_script_dry_run_validates_input(tmp_
     assert "episodes=100" in result.stdout
     assert "holdout_seed=1000000" in result.stdout
     assert not output.exists()
+
+
+def test_pybullet_multi_seed_checkpoint_eval_script_defaults_to_development_validation_seed(
+    tmp_path: Path,
+) -> None:
+    training_report = tmp_path / "training.json"
+    training_report.write_text(
+        json.dumps(
+            {
+                "record_type": "pybullet_multi_seed_training_report",
+                "readiness": {"all_seeds_completed": True},
+                "seed_runs": [{"seed": 8}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_pybullet_multi_seed_checkpoint_eval.py",
+            "--input",
+            str(training_report),
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "holdout_seed=500000" in result.stdout
 
 
 def test_pybullet_robustness_gate_script_writes_report_and_fails_on_reject(tmp_path: Path) -> None:

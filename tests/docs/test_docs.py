@@ -63,3 +63,16 @@ def test_readme_documents_pybullet_ppo_training_entrypoint():
     assert "run_pybullet_ppo_training.py" in text
     assert r"D:\project\.venvs\swift-pybullet-pixi" in text
     assert "pybullet_velocity_training_compatibility" in text
+
+
+def test_readme_documents_pybullet_curriculum_seed_hygiene_and_gates():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for required in [
+        "run_pybullet_geometry_check.py",
+        "500000..500099",
+        "1000000..1000099",
+        "2000000..2000099",
+        "pybullet_curriculum_3x150k.json",
+    ]:
+        assert required in text

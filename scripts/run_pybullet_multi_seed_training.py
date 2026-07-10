@@ -21,11 +21,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--simulation-config", type=Path, default=ROOT / "configs" / "simulation.yaml")
     parser.add_argument("--seeds", type=int, nargs="+", default=[8, 9, 10])
-    parser.add_argument("--total-timesteps", type=int, default=100000)
+    parser.add_argument("--total-timesteps", type=int, default=None)
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "outputs" / "training" / "pybullet_randomized_3x100k.json",
+        default=ROOT / "outputs" / "training" / "pybullet_randomized_3x150k.json",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
@@ -41,10 +41,11 @@ def main(argv: list[str] | None = None) -> int:
         output=args.output,
     )
     if args.dry_run:
+        total_timesteps = config.total_timesteps or training_settings.run.total_timesteps
         print(
             "SWIFT randomized PyBullet multi-seed training config OK: "
             f"seeds={','.join(str(seed) for seed in config.seeds)} "
-            f"total_timesteps={config.total_timesteps} output={config.output}"
+            f"total_timesteps={total_timesteps} output={config.output}"
         )
         return 0
 

@@ -23,11 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--simulation-config", type=Path, default=ROOT / "configs" / "simulation.yaml")
     parser.add_argument("--episodes", type=int, default=100)
-    parser.add_argument("--holdout-seed", type=int, default=1000000)
+    parser.add_argument("--holdout-seed", type=int, default=500000)
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "outputs" / "evaluation" / "pybullet_randomized_3x100k_holdout.json",
+        default=ROOT / "outputs" / "evaluation" / "pybullet_curriculum_validation.json",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)

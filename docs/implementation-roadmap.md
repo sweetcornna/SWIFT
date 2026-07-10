@@ -66,3 +66,12 @@ randomization, three-seed PPO training, shared-layout checkpoint holdout
 evaluation, and a simulator-specific worst-case gate. This evidence remains
 single-drone, headless simulation evidence and does not establish real-flight
 safety.
+
+The curriculum-training follow-up corrects randomized spawn geometry with the
+CF2X collision envelope, scales goal progress, adds an explicit timeout cost,
+and moves from goal reaching through single blockers to the final 1-3 obstacle
+distribution. A real-runtime geometry gate and successive 2,048, 32,768, and
+100,000-step pilots must pass before the 3 x 150,000-step candidate is allowed.
+Development validation uses seeds `500000..500099`; the consumed
+`1000000..1000099` range is excluded from tuning, and `2000000..2000099` is
+reserved for final evidence.
