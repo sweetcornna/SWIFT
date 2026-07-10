@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -101,6 +101,7 @@ def run_pybullet_checkpoint_evaluation(config: PyBulletCheckpointEvaluationConfi
             "pybullet_root": str(config.simulation_settings.pybullet_root),
             "pixi_executable": str(config.simulation_settings.pixi_executable),
             "enable_pybullet_obstacles": bool(config.enable_pybullet_obstacles),
+            "obstacle_randomization": asdict(config.training_settings.pybullet_obstacle_randomization),
         },
         "checkpoint_training": dict(checkpoint.get("result", {})),
         "episodes_requested": config.episodes,
@@ -150,6 +151,7 @@ def _evaluate_pybullet_episode(
         simulation_settings=config.simulation_settings,
         settings=config.training_settings.environment,
         enable_pybullet_obstacles=config.enable_pybullet_obstacles,
+        obstacle_randomization=config.training_settings.pybullet_obstacle_randomization,
         velocity_aviary_cls=config.velocity_aviary_cls,
         drone_model=config.drone_model,
         physics=config.physics,

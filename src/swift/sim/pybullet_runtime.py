@@ -53,6 +53,7 @@ class PyBulletVelocityRuntimeEnv:
         self.enable_obstacles = bool(enable_obstacles)
         self._swift_obstacles = tuple(swift_obstacles or ())
         self._last_observation: tuple[float, ...] | None = None
+        self._command_heading = 0.0
         self._obstacle_body_ids: tuple[int, ...] = ()
         self._swift_obstacle_body_ids: tuple[int, ...] = ()
         aviary_cls, drone_model_value, physics_value = self._resolve_runtime(
@@ -80,13 +81,27 @@ class PyBulletVelocityRuntimeEnv:
         self._swift_obstacle_body_ids = ()
         self._obstacle_body_ids = ()
         observation = pybullet_observation_to_swift(raw_observation)
+        self._command_heading = float(observation[6])
         self._last_observation = observation
         return observation, self._info(raw_info, self._contact_info(observation))
 
+    def set_swift_obstacles(self, obstacles: Sequence[ObstacleState]) -> None:
+        self._swift_obstacles = tuple(obstacles)
+        self._swift_obstacle_body_ids = ()
+        self._obstacle_body_ids = ()
+
     def step(self, action: DroneAction) -> tuple[tuple[float, ...], float, bool, bool, dict[str, Any]]:
-        command = drone_action_to_velocity_command(action, self.max_speed)
+        self._command_heading = _normalize_angle(self._command_heading + float(action.heading_delta))
+        command = drone_action_to_velocity_command(
+            DroneAction(
+                speed=float(action.speed),
+                heading_delta=self._command_heading,
+                climb_rate=float(action.climb_rate),
+            ),
+            self.max_speed,
+        )
         raw_observation, reward, terminated, truncated, raw_info = self._env.step(_action_array(command))
-        observation = pybullet_observation_to_swift(raw_observation)
+        observation = _replace_yaw(pybullet_observation_to_swift(raw_observation), self._command_heading)
         self._last_observation = observation
         return observation, float(reward), bool(terminated), bool(truncated), self._info(
             raw_info,
@@ -367,3 +382,11 @@ def _normalized_path(value: str | Path) -> str:
 
 def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
+
+
+def _normalize_angle(value: float) -> float:
+    return (float(value) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _replace_yaw(observation: tuple[float, ...], yaw: float) -> tuple[float, ...]:
+    return (*observation[:6], float(yaw), *observation[7:])

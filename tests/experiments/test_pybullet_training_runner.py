@@ -177,6 +177,91 @@ def test_pybullet_ppo_training_respects_yaml_ppo_horizon_and_policy_heading(
     assert ppo_config.network.min_speed_fraction == pytest.approx(0.4)
 
 
+def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from swift.config import PyBulletObstacleRandomizationSettings
+
+    captured = {}
+    output = tmp_path / "randomized_training.json"
+    randomization = PyBulletObstacleRandomizationSettings(enabled=True, min_obstacles=2, max_obstacles=3)
+    settings = TrainingSettings(
+        ppo=PPOConfig(rollout_steps=16, minibatch_size=8, update_epochs=1),
+        environment=SimpleAvoidanceSettings(
+            start=(0.0, 0.0, 0.1125),
+            goal=(0.5, 0.0, 0.1125),
+            max_steps=4,
+            safety_margin=0.1,
+        ),
+        run=TrainingRunSettings(
+            stage="stage1",
+            variant="ppo_mlp_pybullet_randomized",
+            seed=8,
+            total_timesteps=32,
+        ),
+        artifact=ExperimentArtifactConfig(
+            root=tmp_path / "outputs",
+            episode_logs=tmp_path / "episodes",
+            experiment_reports=tmp_path / "reports",
+            checkpoints=tmp_path / "checkpoints",
+        ),
+        pybullet_obstacle_randomization=randomization,
+    )
+    simulation_settings = SimulationSettings(
+        pybullet_root=tmp_path / "pybullet",
+        pixi_executable=tmp_path / "pybullet" / "pixi.exe",
+        required_tasks=("test",),
+        check_task="test",
+        smoke_task="drone-demo",
+        command_timeout_seconds=30,
+    )
+
+    def fake_train_ppo_mlp(make_env, config):
+        env = make_env()
+        captured["randomization"] = env._obstacle_randomization
+        env.close()
+        assert config.history_path is not None
+        assert config.checkpoint_path is not None
+        config.history_path.parent.mkdir(parents=True, exist_ok=True)
+        config.history_path.write_text('{"record_type":"ppo_update"}\n', encoding="utf-8")
+        config.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        config.checkpoint_path.write_bytes(b"checkpoint")
+        return PPOTrainingResult(
+            total_timesteps=config.total_timesteps,
+            updates=2,
+            episodes_completed=1,
+            average_episode_return=1.0,
+            success_rate=1.0,
+            collision_rate=0.0,
+            timeout_rate=0.0,
+            final_policy_loss=0.0,
+            final_value_loss=0.0,
+            final_entropy=0.0,
+            checkpoint_path=str(config.checkpoint_path),
+            history_path=str(config.history_path),
+        )
+
+    monkeypatch.setattr(pybullet_training_runner, "train_ppo_mlp", fake_train_ppo_mlp)
+
+    summary = run_pybullet_ppo_training(
+        PyBulletPPOTrainingRunConfig(
+            training_settings=settings,
+            simulation_settings=simulation_settings,
+            output=output,
+            enable_pybullet_obstacles=True,
+            velocity_aviary_cls=lambda **_: FakeVelocityAviary(),
+            drone_model=SimpleNamespace(CF2X="cf2x"),
+            physics=SimpleNamespace(PYB="pyb"),
+        )
+    )
+
+    assert captured["randomization"] == randomization
+    assert summary["runtime"]["obstacle_randomization"]["enabled"] is True
+    assert summary["runtime"]["obstacle_randomization"]["min_obstacles"] == 2
+    assert summary["runtime"]["obstacle_randomization"]["max_obstacles"] == 3
+
+
 class FakeVelocityAviary:
     def reset(self, seed=None, options=None):
         return [[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]], {

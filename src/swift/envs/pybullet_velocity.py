@@ -13,9 +13,10 @@ from swift.core import (
     compute_path_smoothness,
 )
 from swift.envs.simple_avoidance import SimpleAvoidanceSettings
+from swift.envs.pybullet_obstacle_randomization import sample_pybullet_obstacles
 
 if TYPE_CHECKING:
-    from swift.config import SimulationSettings
+    from swift.config import PyBulletObstacleRandomizationSettings, SimulationSettings
     from swift.sim.pybullet_runtime import PyBulletVelocityRuntimeEnv
 
 
@@ -30,11 +31,19 @@ class PyBulletVelocityTrainingEnv:
         settings: SimpleAvoidanceSettings | None = None,
         runtime: PyBulletVelocityRuntimeEnv | None = None,
         enable_pybullet_obstacles: bool = False,
+        obstacle_randomization: PyBulletObstacleRandomizationSettings | None = None,
         velocity_aviary_cls: Any | None = None,
         drone_model: Any | None = None,
         physics: Any | None = None,
     ) -> None:
+        if obstacle_randomization is None:
+            from swift.config import PyBulletObstacleRandomizationSettings
+
+            obstacle_randomization = PyBulletObstacleRandomizationSettings()
         self.settings = settings or SimpleAvoidanceSettings()
+        self._obstacle_randomization = obstacle_randomization
+        self._active_obstacles = self.settings.obstacles
+        self._scenario_seed: int | None = None
         self._steps = 0
         self._path: list[Vector3] = []
         self._previous_goal_distance = 0.0
@@ -46,7 +55,11 @@ class PyBulletVelocityTrainingEnv:
                 simulation_settings,
                 max_speed=self.settings.max_speed,
                 enable_obstacles=False,
-                swift_obstacles=self.settings.obstacles if enable_pybullet_obstacles else (),
+                swift_obstacles=(
+                    self.settings.obstacles
+                    if enable_pybullet_obstacles and not obstacle_randomization.enabled
+                    else ()
+                ),
                 velocity_aviary_cls=velocity_aviary_cls,
                 drone_model=drone_model,
                 physics=physics,
@@ -58,6 +71,19 @@ class PyBulletVelocityTrainingEnv:
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[tuple[float, ...], dict[str, Any]]:
+        if self._obstacle_randomization.enabled:
+            if seed is None:
+                raise ValueError("seed is required when PyBullet obstacle randomization is enabled")
+            self._scenario_seed = int(seed)
+            self._active_obstacles = sample_pybullet_obstacles(
+                self._obstacle_randomization,
+                self.settings,
+                seed=self._scenario_seed,
+            )
+            setter = getattr(self._runtime, "set_swift_obstacles", None)
+            if setter is None:
+                raise RuntimeError("PyBullet runtime does not support randomized SWIFT obstacles")
+            setter(self._active_obstacles)
         self._steps = 0
         observation, info = self._runtime.reset(seed=seed, options=options)
         observation = self._with_goal_tail(observation, info)
@@ -150,11 +176,11 @@ class PyBulletVelocityTrainingEnv:
         if runtime_relative is not None and runtime_radius is not None:
             return runtime_relative, runtime_radius
 
-        if not self.settings.obstacles:
+        if not self._active_obstacles:
             return (0.0, 0.0, 0.0), 0.0
 
         nearest = min(
-            self.settings.obstacles,
+            self._active_obstacles,
             key=lambda obstacle: _distance(position, obstacle.position),
         )
         relative = tuple(float(nearest.position[index]) - float(position[index]) for index in range(3))
@@ -193,6 +219,14 @@ class PyBulletVelocityTrainingEnv:
                 "reward_breakdown": reward_breakdown,
             }
         )
+        if self._obstacle_randomization.enabled:
+            info.update(
+                {
+                    "scenario_seed": self._scenario_seed,
+                    "obstacle_count": len(self._active_obstacles),
+                    "obstacles": self._active_obstacles,
+                }
+            )
         if raw_reward is not None:
             info["raw_reward"] = float(raw_reward)
         if episode_done:

@@ -140,6 +140,103 @@ def test_pybullet_checkpoint_evaluation_rejects_non_positive_episode_count(tmp_p
         )
 
 
+def test_pybullet_checkpoint_evaluation_passes_and_records_randomization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from swift.config import PyBulletObstacleRandomizationSettings
+    from swift.core import EpisodeMetrics
+    import swift.experiments.pybullet_checkpoint_evaluator as evaluator
+
+    checkpoint_path = tmp_path / "randomized.ckpt"
+    checkpoint_path.write_bytes(b"checkpoint")
+    output_path = tmp_path / "randomized-eval.json"
+    randomization = PyBulletObstacleRandomizationSettings(enabled=True)
+    training_settings = TrainingSettings(
+        environment=SimpleAvoidanceSettings(
+            start=(0.0, 0.0, 0.1125),
+            goal=(0.5, 0.0, 0.1125),
+            max_steps=4,
+            safety_margin=0.1,
+        ),
+        artifact=ExperimentArtifactConfig(
+            root=tmp_path / "outputs",
+            episode_logs=tmp_path / "episodes",
+            experiment_reports=tmp_path / "reports",
+            checkpoints=tmp_path / "checkpoints",
+        ),
+        pybullet_obstacle_randomization=randomization,
+    )
+    captured = []
+
+    class FakeRandomizedTrainingEnv:
+        def __init__(self, *, settings, obstacle_randomization, **kwargs):
+            del kwargs
+            self.settings = settings
+            captured.append(obstacle_randomization)
+
+        def reset(self, seed=None):
+            return (0.0,) * 15, {"scenario_seed": seed}
+
+        def step(self, action):
+            del action
+            return (
+                (0.0,) * 15,
+                1.0,
+                True,
+                False,
+                {
+                    "episode_metrics": EpisodeMetrics(
+                        reached_goal=True,
+                        collided=False,
+                        timed_out=False,
+                        path_length=1.0,
+                        path_smoothness=0.0,
+                        minimum_safety_distance=0.2,
+                        steps=1,
+                    )
+                },
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(evaluator, "PyBulletVelocityTrainingEnv", FakeRandomizedTrainingEnv)
+    monkeypatch.setattr(
+        evaluator,
+        "_load_checkpoint_policy",
+        lambda _: (
+            SimpleNamespace(config=object()),
+            {"record_type": "ppo_checkpoint", "result": {}},
+            lambda *args: (0.0, 0.0, 0.0),
+            "ppo_mlp",
+        ),
+    )
+
+    summary = run_pybullet_checkpoint_evaluation(
+        PyBulletCheckpointEvaluationConfig(
+            checkpoint_path=checkpoint_path,
+            training_settings=training_settings,
+            simulation_settings=SimulationSettings(
+                pybullet_root=tmp_path / "pybullet",
+                pixi_executable=tmp_path / "pybullet" / "pixi.exe",
+                required_tasks=("test",),
+                check_task="test",
+                smoke_task="drone-demo",
+                command_timeout_seconds=30,
+            ),
+            output=output_path,
+            episodes=2,
+            seed=1000000,
+            enable_pybullet_obstacles=True,
+        )
+    )
+
+    assert captured == [randomization, randomization]
+    assert summary["runtime"]["obstacle_randomization"]["enabled"] is True
+    assert [episode["seed"] for episode in summary["episodes"]] == [1000000, 1000001]
+
+
 def test_pybullet_checkpoint_evaluation_rejects_hca_checkpoint_until_pybullet_hca_is_tested(
     tmp_path: Path,
 ):

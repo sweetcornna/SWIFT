@@ -60,3 +60,9 @@ deterministic_multi_scenario_tuning is not convergence evidence. Long-horizon
 training must be recorded separately as `long_training_convergence`; only
 long_training_convergence may support a convergence claim after the configured
 gate accepts the report.
+
+The PyBullet robustness slice adds deterministic per-episode static-obstacle
+randomization, three-seed PPO training, shared-layout checkpoint holdout
+evaluation, and a simulator-specific worst-case gate. This evidence remains
+single-drone, headless simulation evidence and does not establish real-flight
+safety.

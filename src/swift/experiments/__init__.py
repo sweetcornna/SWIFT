@@ -34,6 +34,10 @@ __all__ = [
     "PPOCheckpointEvaluationConfig",
     "PyBulletCheckpointEvaluationConfig",
     "PyBulletPPOTrainingRunConfig",
+    "PyBulletMultiSeedTrainingConfig",
+    "PyBulletMultiSeedCheckpointEvaluationConfig",
+    "PyBulletRobustnessGateConfig",
+    "PyBulletRobustnessThresholds",
     "Stage1Scenario",
     "TuningRunConfig",
     "artifact_reference",
@@ -47,12 +51,57 @@ __all__ = [
     "run_ppo_checkpoint_evaluation",
     "run_pybullet_checkpoint_evaluation",
     "run_pybullet_ppo_training",
+    "run_pybullet_multi_seed_training",
+    "run_pybullet_multi_seed_checkpoint_evaluation",
+    "run_pybullet_robustness_gate",
     "run_stage1_policy_search",
     "write_stage1_report",
 ]
 
 
 def __getattr__(name: str):
+    if name in {
+        "PyBulletRobustnessGateConfig",
+        "PyBulletRobustnessThresholds",
+        "run_pybullet_robustness_gate",
+    }:
+        from swift.experiments.pybullet_robustness_gate import (
+            PyBulletRobustnessGateConfig,
+            PyBulletRobustnessThresholds,
+            run_pybullet_robustness_gate,
+        )
+
+        exports = {
+            "PyBulletRobustnessGateConfig": PyBulletRobustnessGateConfig,
+            "PyBulletRobustnessThresholds": PyBulletRobustnessThresholds,
+            "run_pybullet_robustness_gate": run_pybullet_robustness_gate,
+        }
+        return exports[name]
+    if name in {
+        "PyBulletMultiSeedCheckpointEvaluationConfig",
+        "run_pybullet_multi_seed_checkpoint_evaluation",
+    }:
+        from swift.experiments.pybullet_multi_seed_checkpoint_evaluator import (
+            PyBulletMultiSeedCheckpointEvaluationConfig,
+            run_pybullet_multi_seed_checkpoint_evaluation,
+        )
+
+        exports = {
+            "PyBulletMultiSeedCheckpointEvaluationConfig": PyBulletMultiSeedCheckpointEvaluationConfig,
+            "run_pybullet_multi_seed_checkpoint_evaluation": run_pybullet_multi_seed_checkpoint_evaluation,
+        }
+        return exports[name]
+    if name in {"PyBulletMultiSeedTrainingConfig", "run_pybullet_multi_seed_training"}:
+        from swift.experiments.pybullet_multi_seed_training_runner import (
+            PyBulletMultiSeedTrainingConfig,
+            run_pybullet_multi_seed_training,
+        )
+
+        exports = {
+            "PyBulletMultiSeedTrainingConfig": PyBulletMultiSeedTrainingConfig,
+            "run_pybullet_multi_seed_training": run_pybullet_multi_seed_training,
+        }
+        return exports[name]
     if name in {"PyBulletCheckpointEvaluationConfig", "run_pybullet_checkpoint_evaluation"}:
         from swift.experiments.pybullet_checkpoint_evaluator import (
             PyBulletCheckpointEvaluationConfig,

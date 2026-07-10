@@ -132,6 +132,31 @@ def test_runtime_env_wraps_velocity_aviary_contract(tmp_path: Path):
     assert fake_env.closed is True
 
 
+def test_runtime_env_accumulates_heading_delta_for_velocity_commands(tmp_path: Path):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_env = FakeVelocityAviary()
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        velocity_aviary_cls=lambda **_: fake_env,
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    reset_observation, _ = runtime.reset(seed=7)
+    first_observation, *_ = runtime.step(DroneAction(speed=1.0, heading_delta=0.2, climb_rate=0.0))
+    first_command = fake_env.last_action.copy()
+    second_observation, *_ = runtime.step(DroneAction(speed=1.0, heading_delta=0.2, climb_rate=0.0))
+    second_command = fake_env.last_action.copy()
+    runtime.close()
+
+    assert reset_observation[6] == pytest.approx(0.3)
+    assert first_command[0][0:2] == pytest.approx([math.cos(0.5), math.sin(0.5)])
+    assert second_command[0][0:2] == pytest.approx([math.cos(0.7), math.sin(0.7)])
+    assert first_observation[6] == pytest.approx(0.5)
+    assert second_observation[6] == pytest.approx(0.7)
+
+
 def test_runtime_env_can_enable_pybullet_obstacles(tmp_path: Path):
     vendored = tmp_path / "external" / "gym-pybullet-drones"
     vendored.mkdir(parents=True)
@@ -488,6 +513,78 @@ def test_runtime_env_recreates_swift_obstacle_bodies_after_reset(
     ]
     assert fake_pybullet.contact_queries[-1] == (1, 901, 123)
     assert runtime._swift_obstacle_body_ids == (901,)
+
+
+def test_runtime_env_replaces_swift_obstacles_between_resets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletSwiftObstacles()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+    runtime = PyBulletVelocityRuntimeEnv(
+        make_settings(tmp_path),
+        swift_obstacles=(ObstacleState(position=(2.0, 3.0, 4.0), radius=0.4),),
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    runtime.reset(seed=50)
+    replacement = (ObstacleState(position=(5.0, 6.0, 7.0), radius=0.2),)
+    runtime.set_swift_obstacles(replacement)
+    runtime.reset(seed=51)
+    runtime.close()
+
+    assert runtime._swift_obstacles == replacement
+    assert fake_pybullet.collision_shapes == [(0.4, 123), (0.2, 123)]
+    assert fake_pybullet.multi_bodies == [
+        (900, (2.0, 3.0, 4.0), 123),
+        (901, (5.0, 6.0, 7.0), 123),
+    ]
+
+
+def test_pybullet_training_env_randomizes_obstacles_from_reset_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from swift.config import PyBulletObstacleRandomizationSettings
+
+    vendored = tmp_path / "external" / "gym-pybullet-drones"
+    vendored.mkdir(parents=True)
+    fake_pybullet = FakePyBulletSwiftObstacles()
+    monkeypatch.setitem(sys.modules, "pybullet", fake_pybullet)
+    settings = SimpleAvoidanceSettings(
+        start=(0.0, 0.0, 0.1125),
+        goal=(0.5, 0.0, 0.1125),
+        safety_margin=0.1,
+    )
+    randomization = PyBulletObstacleRandomizationSettings(
+        enabled=True,
+        min_obstacles=1,
+        max_obstacles=1,
+    )
+    training_env = PyBulletVelocityTrainingEnv(
+        simulation_settings=make_settings(tmp_path),
+        settings=settings,
+        obstacle_randomization=randomization,
+        velocity_aviary_cls=lambda **_: FakeContactVelocityAviary(),
+        drone_model=SimpleNamespace(CF2X="cf2x"),
+        physics=SimpleNamespace(PYB="pyb"),
+    )
+
+    first_observation, first_info = training_env.reset(seed=123)
+    second_observation, second_info = training_env.reset(seed=123)
+    training_env.close()
+
+    assert len(first_observation) == 15
+    assert len(second_observation) == 15
+    assert first_info["scenario_seed"] == 123
+    assert first_info["obstacle_count"] == 1
+    assert first_info["obstacles"] == second_info["obstacles"]
+    assert training_env._active_obstacles == first_info["obstacles"]
+    assert fake_pybullet.multi_bodies[0][1] == fake_pybullet.multi_bodies[1][1]
 
 
 def test_pybullet_training_env_passes_configured_obstacles_to_runtime_when_enabled(tmp_path: Path):

@@ -108,6 +108,80 @@ class BaselineMetadata:
 
 
 @dataclass(frozen=True)
+class PyBulletObstacleRandomizationSettings:
+    enabled: bool = False
+    min_obstacles: int = 1
+    max_obstacles: int = 3
+    x_range: tuple[float, float] = (0.12, 0.38)
+    y_range: tuple[float, float] = (-0.30, 0.30)
+    z: float = 0.1125
+    radius_range: tuple[float, float] = (0.04, 0.08)
+    endpoint_clearance: float = 0.02
+    inter_obstacle_clearance: float = 0.02
+    require_path_blocker: bool = True
+    max_sampling_attempts: int = 256
+
+    def __post_init__(self) -> None:
+        min_obstacles = _positive_int("min_obstacles", self.min_obstacles)
+        max_obstacles = _positive_int("max_obstacles", self.max_obstacles)
+        if max_obstacles < min_obstacles:
+            raise ValueError("max_obstacles must be >= min_obstacles")
+        x_range = _finite_range("x_range", self.x_range)
+        y_range = _finite_range("y_range", self.y_range)
+        radius_range = _finite_range("radius_range", self.radius_range, positive=True)
+        z = float(self.z)
+        if not math.isfinite(z):
+            raise ValueError("z must be finite")
+        object.__setattr__(self, "enabled", _bool_value("enabled", self.enabled))
+        object.__setattr__(self, "min_obstacles", min_obstacles)
+        object.__setattr__(self, "max_obstacles", max_obstacles)
+        object.__setattr__(self, "x_range", x_range)
+        object.__setattr__(self, "y_range", y_range)
+        object.__setattr__(self, "z", z)
+        object.__setattr__(self, "radius_range", radius_range)
+        object.__setattr__(
+            self,
+            "endpoint_clearance",
+            _non_negative_float("endpoint_clearance", self.endpoint_clearance),
+        )
+        object.__setattr__(
+            self,
+            "inter_obstacle_clearance",
+            _non_negative_float("inter_obstacle_clearance", self.inter_obstacle_clearance),
+        )
+        object.__setattr__(
+            self,
+            "require_path_blocker",
+            _bool_value("require_path_blocker", self.require_path_blocker),
+        )
+        object.__setattr__(
+            self,
+            "max_sampling_attempts",
+            _positive_int("max_sampling_attempts", self.max_sampling_attempts),
+        )
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "PyBulletObstacleRandomizationSettings":
+        defaults = cls()
+        return cls(
+            enabled=mapping.get("enabled", defaults.enabled),
+            min_obstacles=mapping.get("min_obstacles", defaults.min_obstacles),
+            max_obstacles=mapping.get("max_obstacles", defaults.max_obstacles),
+            x_range=mapping.get("x_range", defaults.x_range),
+            y_range=mapping.get("y_range", defaults.y_range),
+            z=mapping.get("z", defaults.z),
+            radius_range=mapping.get("radius_range", defaults.radius_range),
+            endpoint_clearance=mapping.get("endpoint_clearance", defaults.endpoint_clearance),
+            inter_obstacle_clearance=mapping.get(
+                "inter_obstacle_clearance",
+                defaults.inter_obstacle_clearance,
+            ),
+            require_path_blocker=mapping.get("require_path_blocker", defaults.require_path_blocker),
+            max_sampling_attempts=mapping.get("max_sampling_attempts", defaults.max_sampling_attempts),
+        )
+
+
+@dataclass(frozen=True)
 class TrainingSettings:
     ppo: PPOConfig = field(default_factory=PPOConfig)
     policy: MLPBaselinePolicyConfig = field(default_factory=MLPBaselinePolicyConfig)
@@ -115,6 +189,9 @@ class TrainingSettings:
     run: TrainingRunSettings = field(default_factory=TrainingRunSettings)
     artifact: ExperimentArtifactConfig = field(default_factory=ExperimentArtifactConfig)
     baseline: BaselineMetadata = field(default_factory=BaselineMetadata)
+    pybullet_obstacle_randomization: PyBulletObstacleRandomizationSettings = field(
+        default_factory=PyBulletObstacleRandomizationSettings
+    )
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> "TrainingSettings":
@@ -125,6 +202,9 @@ class TrainingSettings:
             run=TrainingRunSettings.from_mapping(_mapping_section(mapping, "run")),
             artifact=_artifact_from_mapping(_artifact_section(mapping)),
             baseline=BaselineMetadata.from_mapping(_mapping_section(mapping, "baseline")),
+            pybullet_obstacle_randomization=PyBulletObstacleRandomizationSettings.from_mapping(
+                _mapping_section(mapping, "pybullet_obstacle_randomization")
+            ),
         )
 
 
@@ -384,3 +464,21 @@ def _bool_value(name: str, value: Any) -> bool:
         if normalized in {"false", "0", "no", "n"}:
             return False
     raise ValueError(f"{name} must be a boolean")
+
+
+def _finite_range(
+    name: str,
+    value: Sequence[float],
+    *,
+    positive: bool = False,
+) -> tuple[float, float]:
+    if isinstance(value, str) or not isinstance(value, Sequence) or len(value) != 2:
+        raise ValueError(f"{name} must contain exactly 2 values")
+    lower, upper = float(value[0]), float(value[1])
+    if not math.isfinite(lower) or not math.isfinite(upper):
+        raise ValueError(f"{name} values must be finite")
+    if positive and (lower <= 0.0 or upper <= 0.0):
+        raise ValueError(f"{name} values must be positive")
+    if lower > upper:
+        raise ValueError(f"{name} lower value must be <= upper value")
+    return lower, upper

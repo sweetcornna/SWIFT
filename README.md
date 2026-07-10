@@ -369,6 +369,36 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ch
 - `timeout_rate=0.0`
 - `average_minimum_safety_distance=0.13011363294349707`
 
+### 10.4 randomized PyBullet robustness training
+
+固定单障碍达到目标后，使用每回合可复现的随机静态障碍继续验证跨布局鲁棒性。正式配置会生成 1–3 个球形障碍，并保证至少一个障碍进入起终点直线路径的安全走廊。
+
+先检查完整任务参数，不启动训练：
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --training-config configs\training_pybullet_randomized.yaml --seeds 8 9 10 --total-timesteps 100000 --output outputs\training\pybullet_randomized_3x100k.json --dry-run
+```
+
+运行三个训练种子，每个种子 100k steps：
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --training-config configs\training_pybullet_randomized.yaml --seeds 8 9 10 --total-timesteps 100000 --output outputs\training\pybullet_randomized_3x100k.json
+```
+
+三个 checkpoint 使用相同的 100 个未见布局做 holdout 评估：
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_randomized_3x100k.json --training-config configs\training_pybullet_randomized.yaml --episodes 100 --holdout-seed 1000000 --output outputs\evaluation\pybullet_randomized_3x100k_holdout.json
+```
+
+应用最差种子严格门槛：
+
+```powershell
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_robustness_gate.py --input outputs\evaluation\pybullet_randomized_3x100k_holdout.json --output outputs\evaluation\pybullet_randomized_3x100k_gate.json --fail-on-reject
+```
+
+默认门槛为：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。gate 失败时仍会写出报告，但不会形成 robustness claim。
+
 ## 11. 产物在哪里
 
 运行脚本会生成：
@@ -411,6 +441,7 @@ PyBullet checkpoint 评估报告：
 | [configs/training.yaml](configs/training.yaml) | repo-native 默认训练配置 |
 | [configs/training_pybullet_probe.yaml](configs/training_pybullet_probe.yaml) | PyBullet no-obstacle 可达速度控制训练 |
 | [configs/training_pybullet_obstacles.yaml](configs/training_pybullet_obstacles.yaml) | PyBullet 显式 SWIFT obstacle 训练 |
+| [configs/training_pybullet_randomized.yaml](configs/training_pybullet_randomized.yaml) | PyBullet 每回合随机静态障碍多种子训练 |
 | [configs/evaluation.yaml](configs/evaluation.yaml) | evidence profile 和 convergence gate |
 
 跨电脑运行时最常改的是 `configs/simulation.yaml` 的 `pybullet_root`。

@@ -160,6 +160,71 @@ def test_current_training_config_loads_with_defaults_for_missing_sections() -> N
     )
 
 
+def test_load_training_settings_parses_pybullet_obstacle_randomization(tmp_path: Path) -> None:
+    from swift.config import PyBulletObstacleRandomizationSettings
+
+    config_path = tmp_path / "randomized.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "pybullet_obstacle_randomization:",
+                "  enabled: true",
+                "  min_obstacles: 1",
+                "  max_obstacles: 3",
+                "  x_range: [0.12, 0.38]",
+                "  y_range: [-0.30, 0.30]",
+                "  z: 0.1125",
+                "  radius_range: [0.04, 0.08]",
+                "  endpoint_clearance: 0.02",
+                "  inter_obstacle_clearance: 0.02",
+                "  require_path_blocker: true",
+                "  max_sampling_attempts: 256",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_training_settings(config_path)
+
+    assert settings.pybullet_obstacle_randomization == PyBulletObstacleRandomizationSettings(
+        enabled=True,
+        min_obstacles=1,
+        max_obstacles=3,
+        x_range=(0.12, 0.38),
+        y_range=(-0.30, 0.30),
+        z=0.1125,
+        radius_range=(0.04, 0.08),
+        endpoint_clearance=0.02,
+        inter_obstacle_clearance=0.02,
+        require_path_blocker=True,
+        max_sampling_attempts=256,
+    )
+
+
+@pytest.mark.parametrize(
+    ("yaml_body", "message"),
+    [
+        ("min_obstacles: 3\n  max_obstacles: 1", "max_obstacles must be >= min_obstacles"),
+        ("x_range: [0.4, 0.1]", "x_range lower value must be <= upper value"),
+        ("radius_range: [0.0, 0.1]", "radius_range values must be positive"),
+        ("max_sampling_attempts: 0", "max_sampling_attempts must be positive"),
+    ],
+)
+def test_load_training_settings_rejects_invalid_obstacle_randomization(
+    tmp_path: Path,
+    yaml_body: str,
+    message: str,
+) -> None:
+    config_path = tmp_path / "invalid-randomized.yaml"
+    config_path.write_text(
+        "pybullet_obstacle_randomization:\n  enabled: true\n  " + yaml_body + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_training_settings(config_path)
+
+
 def test_pybullet_probe_training_config_uses_reachable_physics_horizon() -> None:
     settings = load_training_settings(Path("configs") / "training_pybullet_probe.yaml")
 
@@ -185,6 +250,25 @@ def test_pybullet_obstacle_training_config_uses_explicit_swift_obstacles() -> No
     assert 0.35 <= settings.policy.min_speed_fraction <= 0.5
     assert settings.environment.obstacles
     assert all(obstacle.radius < 2.0 for obstacle in settings.environment.obstacles)
+
+
+def test_pybullet_randomized_training_config_uses_strict_robustness_defaults() -> None:
+    settings = load_training_settings(Path("configs") / "training_pybullet_randomized.yaml")
+
+    randomization = settings.pybullet_obstacle_randomization
+    assert settings.run.variant == "ppo_mlp_pybullet_randomized"
+    assert settings.run.total_timesteps == 100000
+    assert settings.environment.start == pytest.approx((0.0, 0.0, 0.1125))
+    assert settings.environment.goal == pytest.approx((0.5, 0.0, 0.1125))
+    assert settings.environment.safety_margin == pytest.approx(0.1)
+    assert settings.environment.obstacles == ()
+    assert randomization.enabled is True
+    assert (randomization.min_obstacles, randomization.max_obstacles) == (1, 3)
+    assert randomization.x_range == pytest.approx((0.12, 0.38))
+    assert randomization.y_range == pytest.approx((-0.30, 0.30))
+    assert randomization.radius_range == pytest.approx((0.04, 0.08))
+    assert randomization.require_path_blocker is True
+    assert randomization.max_sampling_attempts == 256
 
 
 @pytest.mark.parametrize(

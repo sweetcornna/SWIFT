@@ -241,6 +241,7 @@ env = PyBulletVelocityTrainingEnv(
     simulation_settings=settings,
     settings=env_settings,
     enable_pybullet_obstacles={obstacles_literal},
+    obstacle_randomization=SimpleNamespace(enabled=False),
 )
 try:
     observation, info = env.reset(seed=0)

@@ -1,0 +1,51 @@
+ppo:
+  rollout_steps: 2048
+  minibatch_size: 64
+  update_epochs: 10
+  clip_range: 0.2
+  gamma: 0.99
+  gae_lambda: 0.95
+  entropy_coef: 0.01
+  value_loss_coef: 0.5
+  max_grad_norm: 0.5
+baseline:
+  model: MLP
+  purpose: PyBullet randomized static-obstacle robustness training
+policy:
+  max_speed: 1.0
+  max_heading_delta: 0.2
+  min_speed_fraction: 0.4
+  max_climb_rate: 0.0
+  obstacle_avoidance_distance: 2.0
+  avoidance_heading_delta: 0.4
+environment:
+  start: [0.0, 0.0, 0.1125]
+  goal: [0.5, 0.0, 0.1125]
+  max_steps: 600
+  goal_radius: 0.2
+  max_speed: 1.0
+  max_climb_rate: 0.0
+  safety_margin: 0.1
+pybullet_obstacle_randomization:
+  enabled: true
+  min_obstacles: 1
+  max_obstacles: 3
+  x_range: [0.12, 0.38]
+  y_range: [-0.30, 0.30]
+  z: 0.1125
+  radius_range: [0.04, 0.08]
+  endpoint_clearance: 0.02
+  inter_obstacle_clearance: 0.02
+  require_path_blocker: true
+  max_sampling_attempts: 256
+run:
+  stage: stage1
+  variant: ppo_mlp_pybullet_randomized
+  seed: 8
+  episodes: 100
+  total_timesteps: 100000
+artifact:
+  root: outputs
+  episode_logs: outputs\episodes
+  experiment_reports: outputs\reports
+  checkpoints: checkpoints\stage1
