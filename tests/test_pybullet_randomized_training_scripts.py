@@ -1,12 +1,74 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_pybullet_geometry_check_script_dry_run() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_pybullet_geometry_check.py",
+            "--seed",
+            "500000",
+            "--scenarios",
+            "100",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "seed=500000" in result.stdout
+    assert "scenarios=100" in result.stdout
+
+
+def test_pybullet_geometry_check_script_fails_on_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script_path = ROOT / "scripts" / "run_pybullet_geometry_check.py"
+    assert script_path.is_file(), "geometry check script is not implemented"
+    spec = importlib.util.spec_from_file_location("run_pybullet_geometry_check", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    output = tmp_path / "geometry.json"
+
+    monkeypatch.setattr(
+        module,
+        "_load_validator",
+        lambda: (
+            SimpleNamespace,
+            lambda config: {
+                "readiness": {"geometry_valid": False},
+                "metrics": {
+                    "invalid_initial_clearance_count": 1,
+                    "first_step_collision_count": 0,
+                },
+                "artifacts": {"summary_json": str(config.output)},
+            },
+        ),
+    )
+    monkeypatch.setattr(module, "_load_runtime_unavailable_error", lambda: RuntimeError)
+
+    exit_code = module.main(
+        ["--scenarios", "1", "--output", str(output), "--fail-on-invalid"]
+    )
+
+    assert exit_code == 1
 
 
 def test_pybullet_multi_seed_training_script_dry_run_validates_plan(tmp_path: Path) -> None:

@@ -33,6 +33,7 @@ __all__ = [
     "PolicySearchSpace",
     "PPOCheckpointEvaluationConfig",
     "PyBulletCheckpointEvaluationConfig",
+    "PyBulletGeometryValidationConfig",
     "PyBulletPPOTrainingRunConfig",
     "PyBulletMultiSeedTrainingConfig",
     "PyBulletMultiSeedCheckpointEvaluationConfig",
@@ -50,6 +51,7 @@ __all__ = [
     "run_baseline_episodes",
     "run_ppo_checkpoint_evaluation",
     "run_pybullet_checkpoint_evaluation",
+    "run_pybullet_geometry_validation",
     "run_pybullet_ppo_training",
     "run_pybullet_multi_seed_training",
     "run_pybullet_multi_seed_checkpoint_evaluation",
@@ -60,6 +62,17 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name in {"PyBulletGeometryValidationConfig", "run_pybullet_geometry_validation"}:
+        from swift.experiments.pybullet_geometry_validator import (
+            PyBulletGeometryValidationConfig,
+            run_pybullet_geometry_validation,
+        )
+
+        exports = {
+            "PyBulletGeometryValidationConfig": PyBulletGeometryValidationConfig,
+            "run_pybullet_geometry_validation": run_pybullet_geometry_validation,
+        }
+        return exports[name]
     if name in {
         "PyBulletRobustnessGateConfig",
         "PyBulletRobustnessThresholds",
