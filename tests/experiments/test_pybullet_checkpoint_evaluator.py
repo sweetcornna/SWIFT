@@ -144,7 +144,12 @@ def test_pybullet_checkpoint_evaluation_passes_and_records_randomization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from swift.config import PyBulletObstacleRandomizationSettings
+    from swift.config import (
+        PyBulletCurriculumPhaseSettings,
+        PyBulletCurriculumSettings,
+        PyBulletObstacleRandomizationSettings,
+        PyBulletRewardSettings,
+    )
     from swift.core import EpisodeMetrics
     import swift.experiments.pybullet_checkpoint_evaluator as evaluator
 
@@ -152,6 +157,13 @@ def test_pybullet_checkpoint_evaluation_passes_and_records_randomization(
     checkpoint_path.write_bytes(b"checkpoint")
     output_path = tmp_path / "randomized-eval.json"
     randomization = PyBulletObstacleRandomizationSettings(enabled=True)
+    reward_settings = PyBulletRewardSettings(approach_scale=20.0, timeout_penalty=20.0)
+    curriculum = PyBulletCurriculumSettings(
+        enabled=True,
+        phases=(
+            PyBulletCurriculumPhaseSettings("randomized_final", 1.0, 1, 3, True),
+        ),
+    )
     training_settings = TrainingSettings(
         environment=SimpleAvoidanceSettings(
             start=(0.0, 0.0, 0.1125),
@@ -166,22 +178,27 @@ def test_pybullet_checkpoint_evaluation_passes_and_records_randomization(
             checkpoints=tmp_path / "checkpoints",
         ),
         pybullet_obstacle_randomization=randomization,
+        pybullet_reward=reward_settings,
+        pybullet_curriculum=curriculum,
     )
     captured = []
 
     class FakeRandomizedTrainingEnv:
-        def __init__(self, *, settings, obstacle_randomization, **kwargs):
+        def __init__(self, *, settings, obstacle_randomization, reward_settings, curriculum, **kwargs):
             del kwargs
             self.settings = settings
-            captured.append(obstacle_randomization)
+            captured.append((obstacle_randomization, reward_settings, curriculum))
 
         def reset(self, seed=None):
-            return (0.0,) * 15, {"scenario_seed": seed}
+            return (
+                (0.0, 0.0, 0.1125, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5),
+                {"scenario_seed": seed, "curriculum_phase": "randomized_final"},
+            )
 
         def step(self, action):
             del action
             return (
-                (0.0,) * 15,
+                (0.2, 0.0, 0.1125, 0.0, 0.0, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3),
                 1.0,
                 True,
                 False,
@@ -232,9 +249,89 @@ def test_pybullet_checkpoint_evaluation_passes_and_records_randomization(
         )
     )
 
-    assert captured == [randomization, randomization]
+    assert captured == [
+        (randomization, reward_settings, curriculum),
+        (randomization, reward_settings, curriculum),
+    ]
     assert summary["runtime"]["obstacle_randomization"]["enabled"] is True
+    assert summary["runtime"]["reward"]["approach_scale"] == pytest.approx(20.0)
+    assert summary["runtime"]["curriculum"]["enabled"] is True
     assert [episode["seed"] for episode in summary["episodes"]] == [1000000, 1000001]
+    assert summary["evaluation_scenarios"] == {"seed_start": 1000000, "seed_end": 1000001}
+    episode = summary["episodes"][0]
+    assert episode["curriculum_phase"] == "randomized_final"
+    assert episode["initial_goal_distance"] == pytest.approx(0.5)
+    assert episode["minimum_goal_distance"] == pytest.approx(0.3)
+    assert episode["final_goal_distance"] == pytest.approx(0.3)
+    assert episode["final_position"] == pytest.approx((0.2, 0.0, 0.1125))
+
+
+def test_pybullet_checkpoint_evaluation_rejects_non_final_curriculum_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from swift.config import (
+        PyBulletCurriculumPhaseSettings,
+        PyBulletCurriculumSettings,
+        PyBulletObstacleRandomizationSettings,
+    )
+    import swift.experiments.pybullet_checkpoint_evaluator as evaluator
+
+    checkpoint_path = tmp_path / "wrong-phase.ckpt"
+    checkpoint_path.write_bytes(b"checkpoint")
+    curriculum = PyBulletCurriculumSettings(
+        enabled=True,
+        phases=(
+            PyBulletCurriculumPhaseSettings("goal_reaching", 0.5, 0, 0, False),
+            PyBulletCurriculumPhaseSettings("randomized_final", 1.0, 1, 3, True),
+        ),
+    )
+
+    class WrongPhaseEnv:
+        settings = SimpleAvoidanceSettings()
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def reset(self, seed=None):
+            return (0.0,) * 15, {"scenario_seed": seed, "curriculum_phase": "goal_reaching"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(evaluator, "PyBulletVelocityTrainingEnv", WrongPhaseEnv)
+    monkeypatch.setattr(
+        evaluator,
+        "_load_checkpoint_policy",
+        lambda _: (
+            SimpleNamespace(config=object()),
+            {"record_type": "ppo_checkpoint", "result": {}},
+            lambda *args: (0.0, 0.0, 0.0),
+            "ppo_mlp",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="evaluation must use final curriculum phase"):
+        run_pybullet_checkpoint_evaluation(
+            PyBulletCheckpointEvaluationConfig(
+                checkpoint_path=checkpoint_path,
+                training_settings=TrainingSettings(
+                    pybullet_obstacle_randomization=PyBulletObstacleRandomizationSettings(enabled=True),
+                    pybullet_curriculum=curriculum,
+                ),
+                simulation_settings=SimulationSettings(
+                    pybullet_root=tmp_path,
+                    pixi_executable=tmp_path / "pixi.exe",
+                    required_tasks=(),
+                    check_task="test",
+                    smoke_task="drone-demo",
+                    command_timeout_seconds=30,
+                ),
+                episodes=1,
+                seed=500000,
+                output=tmp_path / "wrong-phase.json",
+            )
+        )
 
 
 def test_pybullet_checkpoint_evaluation_rejects_hca_checkpoint_until_pybullet_hca_is_tested(

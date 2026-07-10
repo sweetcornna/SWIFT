@@ -181,11 +181,24 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    from swift.config import PyBulletObstacleRandomizationSettings
+    from swift.config import (
+        PyBulletCurriculumPhaseSettings,
+        PyBulletCurriculumSettings,
+        PyBulletObstacleRandomizationSettings,
+        PyBulletRewardSettings,
+    )
+    from swift.rl import PPOPhaseMetrics
 
     captured = {}
     output = tmp_path / "randomized_training.json"
     randomization = PyBulletObstacleRandomizationSettings(enabled=True, min_obstacles=2, max_obstacles=3)
+    reward_settings = PyBulletRewardSettings(approach_scale=20.0, timeout_penalty=20.0)
+    curriculum = PyBulletCurriculumSettings(
+        enabled=True,
+        phases=(
+            PyBulletCurriculumPhaseSettings("randomized_final", 1.0, 2, 3, True),
+        ),
+    )
     settings = TrainingSettings(
         ppo=PPOConfig(rollout_steps=16, minibatch_size=8, update_epochs=1),
         environment=SimpleAvoidanceSettings(
@@ -207,6 +220,8 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
             checkpoints=tmp_path / "checkpoints",
         ),
         pybullet_obstacle_randomization=randomization,
+        pybullet_reward=reward_settings,
+        pybullet_curriculum=curriculum,
     )
     simulation_settings = SimulationSettings(
         pybullet_root=tmp_path / "pybullet",
@@ -220,6 +235,8 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
     def fake_train_ppo_mlp(make_env, config):
         env = make_env()
         captured["randomization"] = env._obstacle_randomization
+        captured["reward"] = env._reward_settings
+        captured["curriculum"] = env._curriculum
         env.close()
         assert config.history_path is not None
         assert config.checkpoint_path is not None
@@ -240,6 +257,16 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
             final_entropy=0.0,
             checkpoint_path=str(config.checkpoint_path),
             history_path=str(config.history_path),
+            phase_metrics=(
+                PPOPhaseMetrics(
+                    phase="randomized_final",
+                    episodes_completed=1,
+                    average_episode_return=1.0,
+                    success_rate=1.0,
+                    collision_rate=0.0,
+                    timeout_rate=0.0,
+                ),
+            ),
         )
 
     monkeypatch.setattr(pybullet_training_runner, "train_ppo_mlp", fake_train_ppo_mlp)
@@ -257,9 +284,15 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
     )
 
     assert captured["randomization"] == randomization
+    assert captured["reward"] == reward_settings
+    assert captured["curriculum"] == curriculum
     assert summary["runtime"]["obstacle_randomization"]["enabled"] is True
     assert summary["runtime"]["obstacle_randomization"]["min_obstacles"] == 2
     assert summary["runtime"]["obstacle_randomization"]["max_obstacles"] == 3
+    assert summary["runtime"]["reward"]["approach_scale"] == pytest.approx(20.0)
+    assert summary["runtime"]["curriculum"]["enabled"] is True
+    assert summary["runtime"]["curriculum"]["phases"][-1]["name"] == "randomized_final"
+    assert summary["training"]["phase_metrics"][0]["phase"] == "randomized_final"
 
 
 class FakeVelocityAviary:

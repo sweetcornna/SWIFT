@@ -102,10 +102,16 @@ def run_pybullet_checkpoint_evaluation(config: PyBulletCheckpointEvaluationConfi
             "pixi_executable": str(config.simulation_settings.pixi_executable),
             "enable_pybullet_obstacles": bool(config.enable_pybullet_obstacles),
             "obstacle_randomization": asdict(config.training_settings.pybullet_obstacle_randomization),
+            "reward": asdict(config.training_settings.pybullet_reward),
+            "curriculum": asdict(config.training_settings.pybullet_curriculum),
         },
         "checkpoint_training": dict(checkpoint.get("result", {})),
         "episodes_requested": config.episodes,
         "seed": config.seed,
+        "evaluation_scenarios": {
+            "seed_start": config.seed,
+            "seed_end": config.seed + config.episodes - 1,
+        },
         "metrics": _aggregate_metrics(episodes),
         "episodes": episodes,
         "artifacts": {
@@ -152,20 +158,30 @@ def _evaluate_pybullet_episode(
         settings=config.training_settings.environment,
         enable_pybullet_obstacles=config.enable_pybullet_obstacles,
         obstacle_randomization=config.training_settings.pybullet_obstacle_randomization,
+        reward_settings=config.training_settings.pybullet_reward,
+        curriculum=config.training_settings.pybullet_curriculum,
         velocity_aviary_cls=config.velocity_aviary_cls,
         drone_model=config.drone_model,
         physics=config.physics,
     )
     try:
-        observation, _ = env.reset(seed=seed)
+        observation, reset_info = env.reset(seed=seed)
+        curriculum = config.training_settings.pybullet_curriculum
+        if curriculum.enabled:
+            expected_phase = curriculum.phases[-1].name
+            if reset_info.get("curriculum_phase") != expected_phase:
+                raise RuntimeError("evaluation must use final curriculum phase")
         terminated = False
         truncated = False
         total_reward = 0.0
+        initial_goal_distance = float(observation[14])
+        minimum_goal_distance = initial_goal_distance
         info: dict[str, Any] = {}
         while not terminated and not truncated:
             action = deterministic_action(model, observation, env.settings, model.config)
             observation, reward, terminated, truncated, info = env.step(action)
             total_reward += float(reward)
+            minimum_goal_distance = min(minimum_goal_distance, float(observation[14]))
     finally:
         env.close()
 
@@ -180,6 +196,11 @@ def _evaluate_pybullet_episode(
         "path_length": float(metrics.path_length),
         "path_smoothness": float(metrics.path_smoothness),
         "minimum_safety_distance": float(metrics.minimum_safety_distance),
+        "curriculum_phase": str(reset_info.get("curriculum_phase", "final")),
+        "initial_goal_distance": initial_goal_distance,
+        "minimum_goal_distance": minimum_goal_distance,
+        "final_goal_distance": float(observation[14]),
+        "final_position": tuple(float(value) for value in observation[0:3]),
     }
 
 
