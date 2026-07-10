@@ -15,7 +15,7 @@ from torch.nn import functional as F
 
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceSettings
-from swift.rl.ppo import MLPActorCriticConfig, PPOTrainingConfig, PPOTrainingResult
+from swift.rl.ppo import MLPActorCriticConfig, PPOPhaseMetrics, PPOTrainingConfig, PPOTrainingResult
 
 
 class MLPActorCritic(nn.Module):
@@ -141,6 +141,7 @@ def _train_ppo_mlp_open_env(
     optimizer: torch.optim.Optimizer,
     config: PPOTrainingConfig,
 ) -> PPOTrainingResult:
+    _set_training_progress(env, 0, config.total_timesteps)
     observation, _ = env.reset(seed=config.seed)
 
     total_timesteps = 0
@@ -151,6 +152,7 @@ def _train_ppo_mlp_open_env(
     successes = 0
     collisions = 0
     timeouts = 0
+    phase_episodes: list[dict[str, Any]] = []
     final_policy_loss = 0.0
     final_value_loss = 0.0
     final_entropy = 0.0
@@ -166,6 +168,7 @@ def _train_ppo_mlp_open_env(
             config=config,
             rollout_length=rollout_length,
             seed_offset=episodes_completed,
+            starting_timestep=total_timesteps,
             current_episode_return=current_episode_return,
         )
         observation = rollout["observation"]
@@ -176,6 +179,7 @@ def _train_ppo_mlp_open_env(
         successes += rollout["successes"]
         collisions += rollout["collisions"]
         timeouts += rollout["timeouts"]
+        phase_episodes.extend(rollout["phase_episodes"])
 
         with torch.no_grad():
             _, next_values = model(_observation_tensor(observation).unsqueeze(0))
@@ -233,6 +237,7 @@ def _train_ppo_mlp_open_env(
                 final_value_loss = float(value_loss.detach().item())
                 final_entropy = float(entropy_loss.detach().item())
         updates += 1
+        phase_metrics = _summarize_phase_metrics(phase_episodes)
         if config.history_path is not None:
             _append_history(
                 config.history_path,
@@ -246,6 +251,7 @@ def _train_ppo_mlp_open_env(
                     "collision_rate": _rate(collisions, episodes_completed),
                     "timeout_rate": _rate(timeouts, episodes_completed),
                     "average_episode_return": _rate_sum(episode_returns),
+                    "phase_metrics": [asdict(item) for item in phase_metrics],
                     "policy_loss": final_policy_loss,
                     "value_loss": final_value_loss,
                     "entropy": final_entropy,
@@ -265,6 +271,7 @@ def _train_ppo_mlp_open_env(
         final_entropy=final_entropy,
         checkpoint_path=str(config.checkpoint_path) if config.checkpoint_path is not None else None,
         history_path=str(config.history_path) if config.history_path is not None else None,
+        phase_metrics=_summarize_phase_metrics(phase_episodes),
     )
     if config.checkpoint_path is not None:
         _save_checkpoint(config.checkpoint_path, model, optimizer, config, result)
@@ -277,6 +284,12 @@ def _close_env(env: Any) -> None:
         close()
 
 
+def _set_training_progress(env: Any, completed_timesteps: int, total_timesteps: int) -> None:
+    setter = getattr(env, "set_training_progress", None)
+    if setter is not None:
+        setter(completed_timesteps, total_timesteps)
+
+
 def _collect_rollout(
     *,
     env: Any,
@@ -285,6 +298,7 @@ def _collect_rollout(
     config: PPOTrainingConfig,
     rollout_length: int,
     seed_offset: int,
+    starting_timestep: int,
     current_episode_return: float,
 ) -> dict[str, Any]:
     observations: list[torch.Tensor] = []
@@ -298,8 +312,9 @@ def _collect_rollout(
     successes = 0
     collisions = 0
     timeouts = 0
+    phase_episodes: list[dict[str, Any]] = []
 
-    for _ in range(rollout_length):
+    for local_step in range(rollout_length):
         observations.append(_observation_tensor(observation))
         action, raw_action, logprob, value = sample_action(
             model,
@@ -319,11 +334,27 @@ def _collect_rollout(
 
         if done:
             episodes_completed += 1
-            episode_returns.append(current_episode_return)
+            completed_return = current_episode_return
+            episode_returns.append(completed_return)
             current_episode_return = 0.0
-            successes += int(_episode_success(info))
-            collisions += int(bool(info.get("collided", False)))
-            timeouts += int(bool(info.get("timed_out", truncated)))
+            success = _episode_success(info)
+            collision = bool(info.get("collided", False))
+            timeout = bool(info.get("timed_out", truncated))
+            successes += int(success)
+            collisions += int(collision)
+            timeouts += int(timeout)
+            if "curriculum_phase" in info:
+                phase_episodes.append(
+                    {
+                        "phase": str(info["curriculum_phase"]),
+                        "return": completed_return,
+                        "success": success,
+                        "collision": collision,
+                        "timeout": timeout,
+                    }
+                )
+            completed_timesteps = starting_timestep + local_step + 1
+            _set_training_progress(env, completed_timesteps, config.total_timesteps)
             next_observation, _ = env.reset(seed=config.seed + seed_offset + episodes_completed)
 
         observation = next_observation
@@ -342,7 +373,26 @@ def _collect_rollout(
         "successes": successes,
         "collisions": collisions,
         "timeouts": timeouts,
+        "phase_episodes": phase_episodes,
     }
+
+
+def _summarize_phase_metrics(records: Sequence[dict[str, Any]]) -> tuple[PPOPhaseMetrics, ...]:
+    summaries = []
+    for phase in sorted({str(record["phase"]) for record in records}):
+        selected = [record for record in records if record["phase"] == phase]
+        count = len(selected)
+        summaries.append(
+            PPOPhaseMetrics(
+                phase=phase,
+                episodes_completed=count,
+                average_episode_return=_rate_sum([float(record["return"]) for record in selected]),
+                success_rate=_rate(sum(bool(record["success"]) for record in selected), count),
+                collision_rate=_rate(sum(bool(record["collision"]) for record in selected), count),
+                timeout_rate=_rate(sum(bool(record["timeout"]) for record in selected), count),
+            )
+        )
+    return tuple(summaries)
 
 
 def _evaluate_actions(

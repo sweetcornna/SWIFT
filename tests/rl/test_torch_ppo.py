@@ -108,6 +108,7 @@ def test_train_ppo_mlp_runs_tiny_cpu_update_and_reports_finite_metrics():
     assert result.total_timesteps == 128
     assert result.updates >= 1
     assert result.episodes_completed >= 1
+    assert result.phase_metrics == ()
     for metric in (
         result.average_episode_return,
         result.success_rate,
@@ -143,6 +144,35 @@ def test_train_ppo_mlp_closes_env_after_training():
 
     assert created
     assert created[0].closed is True
+
+
+def test_train_ppo_mlp_propagates_progress_and_reports_phase_metrics():
+    created = []
+
+    def make_env():
+        env = CurriculumTrackingEnv()
+        created.append(env)
+        return env
+
+    result = train_ppo_mlp(
+        make_env,
+        PPOTrainingConfig(
+            total_timesteps=8,
+            rollout_steps=4,
+            minibatch_size=4,
+            update_epochs=1,
+            torch_num_threads=1,
+            seed=123,
+            network=MLPActorCriticConfig(hidden_sizes=(8,)),
+        ),
+    )
+
+    env = created[0]
+    assert env.progress_calls[0] == (0, 8)
+    assert env.progress_calls == sorted(env.progress_calls)
+    assert {item.phase for item in result.phase_metrics} == {"goal_reaching", "randomized_final"}
+    assert sum(item.episodes_completed for item in result.phase_metrics) == result.episodes_completed
+    assert all(item.success_rate == pytest.approx(1.0) for item in result.phase_metrics)
 
 
 def test_train_ppo_mlp_runs_tiny_update_with_pybullet_training_env_fake_runtime(tmp_path: Path):
@@ -219,6 +249,7 @@ def test_train_ppo_mlp_writes_checkpoint_and_update_history(tmp_path: Path):
         assert record["record_type"] == "ppo_update"
         assert record["total_timesteps"] > 0
         assert record["episodes_completed"] >= 0
+        assert record["phase_metrics"] == []
         for metric in ("policy_loss", "value_loss", "entropy", "average_episode_return"):
             assert math.isfinite(record[metric])
 
@@ -299,6 +330,31 @@ class ClosingEnv:
 
     def close(self):
         self.closed = True
+
+
+class CurriculumTrackingEnv(ClosingEnv):
+    def __init__(self) -> None:
+        super().__init__()
+        self.progress_calls: list[tuple[int, int]] = []
+        self.current_phase = "goal_reaching"
+
+    def set_training_progress(self, completed_timesteps: int, total_timesteps: int) -> None:
+        self.progress_calls.append((completed_timesteps, total_timesteps))
+        self.current_phase = (
+            "goal_reaching" if completed_timesteps < total_timesteps // 2 else "randomized_final"
+        )
+
+    def step(self, action):
+        observation, reward, _, _, info = super().step(action)
+        info.update(
+            {
+                "curriculum_phase": self.current_phase,
+                "reached_goal": True,
+                "collided": False,
+                "timed_out": False,
+            }
+        )
+        return observation, reward, True, False, info
 
 
 class FakeVelocityAviary:

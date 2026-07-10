@@ -148,6 +148,16 @@ class HCAPPOTrainingConfig(PPOConfig):
 
 
 @dataclass(frozen=True)
+class PPOPhaseMetrics:
+    phase: str
+    episodes_completed: int
+    average_episode_return: float
+    success_rate: float
+    collision_rate: float
+    timeout_rate: float
+
+
+@dataclass(frozen=True)
 class PPOTrainingResult:
     total_timesteps: int
     updates: int
@@ -161,6 +171,7 @@ class PPOTrainingResult:
     final_entropy: float
     checkpoint_path: str | None = None
     history_path: str | None = None
+    phase_metrics: tuple[PPOPhaseMetrics, ...] = ()
 
 
 def train_ppo_mlp(
