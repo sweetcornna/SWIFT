@@ -177,6 +177,7 @@ def test_load_training_settings_parses_pybullet_obstacle_randomization(tmp_path:
                 "  radius_range: [0.04, 0.08]",
                 "  endpoint_clearance: 0.02",
                 "  inter_obstacle_clearance: 0.02",
+                "  vehicle_radius: 0.061",
                 "  require_path_blocker: true",
                 "  max_sampling_attempts: 256",
             ]
@@ -196,9 +197,116 @@ def test_load_training_settings_parses_pybullet_obstacle_randomization(tmp_path:
         radius_range=(0.04, 0.08),
         endpoint_clearance=0.02,
         inter_obstacle_clearance=0.02,
+        vehicle_radius=0.061,
         require_path_blocker=True,
         max_sampling_attempts=256,
     )
+
+
+def test_load_training_settings_parses_pybullet_reward_and_curriculum(tmp_path: Path) -> None:
+    from swift.config import (
+        PyBulletCurriculumPhaseSettings,
+        PyBulletCurriculumSettings,
+        PyBulletRewardSettings,
+    )
+
+    config_path = tmp_path / "curriculum.yaml"
+    config_path.write_text(
+        """
+pybullet_obstacle_randomization:
+  enabled: true
+  vehicle_radius: 0.061
+pybullet_reward:
+  arrival_reward: 100.0
+  approach_scale: 20.0
+  collision_penalty: 100.0
+  timeout_penalty: 20.0
+  episode_time_penalty: 1.0
+  heading_smoothness_penalty: 0.05
+pybullet_curriculum:
+  enabled: true
+  phases:
+    - {name: goal_reaching, end_fraction: 0.20, min_obstacles: 0, max_obstacles: 0, require_path_blocker: false}
+    - {name: single_obstacle, end_fraction: 0.40, min_obstacles: 1, max_obstacles: 1, require_path_blocker: false}
+    - {name: single_blocker, end_fraction: 0.70, min_obstacles: 1, max_obstacles: 1, require_path_blocker: true}
+    - {name: randomized_final, end_fraction: 1.00, min_obstacles: 1, max_obstacles: 3, require_path_blocker: true}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_training_settings(config_path)
+
+    assert settings.pybullet_obstacle_randomization.vehicle_radius == pytest.approx(0.061)
+    assert settings.pybullet_reward == PyBulletRewardSettings(
+        arrival_reward=100.0,
+        approach_scale=20.0,
+        collision_penalty=100.0,
+        timeout_penalty=20.0,
+        episode_time_penalty=1.0,
+        heading_smoothness_penalty=0.05,
+    )
+    assert settings.pybullet_curriculum == PyBulletCurriculumSettings(
+        enabled=True,
+        phases=(
+            PyBulletCurriculumPhaseSettings("goal_reaching", 0.20, 0, 0, False),
+            PyBulletCurriculumPhaseSettings("single_obstacle", 0.40, 1, 1, False),
+            PyBulletCurriculumPhaseSettings("single_blocker", 0.70, 1, 1, True),
+            PyBulletCurriculumPhaseSettings("randomized_final", 1.00, 1, 3, True),
+        ),
+    )
+    assert settings.pybullet_curriculum.phase_for(0.0).name == "goal_reaching"
+    assert settings.pybullet_curriculum.phase_for(0.20).name == "single_obstacle"
+    assert settings.pybullet_curriculum.phase_for(0.70).name == "randomized_final"
+    assert settings.pybullet_curriculum.phase_for(1.0).name == "randomized_final"
+
+
+@pytest.mark.parametrize(
+    ("yaml_body", "message"),
+    [
+        ("phases: []", "phases must not be empty"),
+        (
+            "phases:\n"
+            "    - {name: first, end_fraction: 0.7, min_obstacles: 0, max_obstacles: 0}\n"
+            "    - {name: second, end_fraction: 0.6, min_obstacles: 1, max_obstacles: 1}",
+            "end_fraction values must be strictly increasing",
+        ),
+        (
+            "phases:\n"
+            "    - {name: final, end_fraction: 0.9, min_obstacles: 1, max_obstacles: 1}",
+            "final curriculum end_fraction must equal 1.0",
+        ),
+        (
+            "phases:\n"
+            "    - {name: empty, end_fraction: 1.0, min_obstacles: 0, max_obstacles: 0, require_path_blocker: true}",
+            "path blocker requires at least one obstacle",
+        ),
+    ],
+)
+def test_load_training_settings_rejects_invalid_pybullet_curriculum(
+    tmp_path: Path,
+    yaml_body: str,
+    message: str,
+) -> None:
+    path = tmp_path / "invalid-curriculum.yaml"
+    path.write_text(
+        "pybullet_curriculum:\n  enabled: true\n  " + yaml_body + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_training_settings(path)
+
+
+@pytest.mark.parametrize("value", [".nan", ".inf", "-.inf", "-1.0"])
+def test_load_training_settings_rejects_invalid_pybullet_reward(tmp_path: Path, value: str) -> None:
+    path = tmp_path / "invalid-reward.yaml"
+    path.write_text(
+        f"pybullet_reward:\n  approach_scale: {value}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="approach_scale must be non-negative"):
+        load_training_settings(path)
 
 
 @pytest.mark.parametrize(
@@ -257,7 +365,7 @@ def test_pybullet_randomized_training_config_uses_strict_robustness_defaults() -
 
     randomization = settings.pybullet_obstacle_randomization
     assert settings.run.variant == "ppo_mlp_pybullet_randomized"
-    assert settings.run.total_timesteps == 100000
+    assert settings.run.total_timesteps == 150000
     assert settings.environment.start == pytest.approx((0.0, 0.0, 0.1125))
     assert settings.environment.goal == pytest.approx((0.5, 0.0, 0.1125))
     assert settings.environment.safety_margin == pytest.approx(0.1)
@@ -267,8 +375,17 @@ def test_pybullet_randomized_training_config_uses_strict_robustness_defaults() -
     assert randomization.x_range == pytest.approx((0.12, 0.38))
     assert randomization.y_range == pytest.approx((-0.30, 0.30))
     assert randomization.radius_range == pytest.approx((0.04, 0.08))
+    assert randomization.vehicle_radius == pytest.approx(0.061)
     assert randomization.require_path_blocker is True
     assert randomization.max_sampling_attempts == 256
+    assert settings.pybullet_reward.approach_scale == pytest.approx(20.0)
+    assert settings.pybullet_reward.timeout_penalty == pytest.approx(20.0)
+    assert [phase.name for phase in settings.pybullet_curriculum.phases] == [
+        "goal_reaching",
+        "single_obstacle",
+        "single_blocker",
+        "randomized_final",
+    ]
 
 
 @pytest.mark.parametrize(

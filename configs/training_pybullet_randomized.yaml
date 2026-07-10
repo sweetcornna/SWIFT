@@ -36,14 +36,45 @@ pybullet_obstacle_randomization:
   radius_range: [0.04, 0.08]
   endpoint_clearance: 0.02
   inter_obstacle_clearance: 0.02
+  vehicle_radius: 0.061
   require_path_blocker: true
   max_sampling_attempts: 256
+pybullet_reward:
+  arrival_reward: 100.0
+  approach_scale: 20.0
+  collision_penalty: 100.0
+  timeout_penalty: 20.0
+  episode_time_penalty: 1.0
+  heading_smoothness_penalty: 0.05
+pybullet_curriculum:
+  enabled: true
+  phases:
+    - name: goal_reaching
+      end_fraction: 0.20
+      min_obstacles: 0
+      max_obstacles: 0
+      require_path_blocker: false
+    - name: single_obstacle
+      end_fraction: 0.40
+      min_obstacles: 1
+      max_obstacles: 1
+      require_path_blocker: false
+    - name: single_blocker
+      end_fraction: 0.70
+      min_obstacles: 1
+      max_obstacles: 1
+      require_path_blocker: true
+    - name: randomized_final
+      end_fraction: 1.00
+      min_obstacles: 1
+      max_obstacles: 3
+      require_path_blocker: true
 run:
   stage: stage1
   variant: ppo_mlp_pybullet_randomized
   seed: 8
   episodes: 100
-  total_timesteps: 100000
+  total_timesteps: 150000
 artifact:
   root: outputs
   episode_logs: outputs\episodes

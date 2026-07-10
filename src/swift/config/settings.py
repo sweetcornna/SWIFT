@@ -118,6 +118,7 @@ class PyBulletObstacleRandomizationSettings:
     radius_range: tuple[float, float] = (0.04, 0.08)
     endpoint_clearance: float = 0.02
     inter_obstacle_clearance: float = 0.02
+    vehicle_radius: float = 0.0
     require_path_blocker: bool = True
     max_sampling_attempts: int = 256
 
@@ -149,6 +150,7 @@ class PyBulletObstacleRandomizationSettings:
             "inter_obstacle_clearance",
             _non_negative_float("inter_obstacle_clearance", self.inter_obstacle_clearance),
         )
+        object.__setattr__(self, "vehicle_radius", _non_negative_float("vehicle_radius", self.vehicle_radius))
         object.__setattr__(
             self,
             "require_path_blocker",
@@ -176,9 +178,122 @@ class PyBulletObstacleRandomizationSettings:
                 "inter_obstacle_clearance",
                 defaults.inter_obstacle_clearance,
             ),
+            vehicle_radius=mapping.get("vehicle_radius", defaults.vehicle_radius),
             require_path_blocker=mapping.get("require_path_blocker", defaults.require_path_blocker),
             max_sampling_attempts=mapping.get("max_sampling_attempts", defaults.max_sampling_attempts),
         )
+
+
+@dataclass(frozen=True)
+class PyBulletRewardSettings:
+    arrival_reward: float = 100.0
+    approach_scale: float = 1.0
+    collision_penalty: float = 100.0
+    timeout_penalty: float = 0.0
+    episode_time_penalty: float = 1.0
+    heading_smoothness_penalty: float = 0.05
+
+    def __post_init__(self) -> None:
+        for name in (
+            "arrival_reward",
+            "approach_scale",
+            "collision_penalty",
+            "timeout_penalty",
+            "episode_time_penalty",
+            "heading_smoothness_penalty",
+        ):
+            object.__setattr__(self, name, _non_negative_float(name, getattr(self, name)))
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "PyBulletRewardSettings":
+        defaults = cls()
+        return cls(
+            arrival_reward=mapping.get("arrival_reward", defaults.arrival_reward),
+            approach_scale=mapping.get("approach_scale", defaults.approach_scale),
+            collision_penalty=mapping.get("collision_penalty", defaults.collision_penalty),
+            timeout_penalty=mapping.get("timeout_penalty", defaults.timeout_penalty),
+            episode_time_penalty=mapping.get("episode_time_penalty", defaults.episode_time_penalty),
+            heading_smoothness_penalty=mapping.get(
+                "heading_smoothness_penalty",
+                defaults.heading_smoothness_penalty,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class PyBulletCurriculumPhaseSettings:
+    name: str
+    end_fraction: float
+    min_obstacles: int
+    max_obstacles: int
+    require_path_blocker: bool = False
+
+    def __post_init__(self) -> None:
+        name = str(self.name).strip()
+        if not name:
+            raise ValueError("curriculum phase name must not be empty")
+        end_fraction = _unit_interval("end_fraction", self.end_fraction)
+        min_obstacles = _non_negative_int("min_obstacles", self.min_obstacles)
+        max_obstacles = _non_negative_int("max_obstacles", self.max_obstacles)
+        if max_obstacles < min_obstacles:
+            raise ValueError("max_obstacles must be >= min_obstacles")
+        require_path_blocker = _bool_value("require_path_blocker", self.require_path_blocker)
+        if require_path_blocker and max_obstacles == 0:
+            raise ValueError("path blocker requires at least one obstacle")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "end_fraction", end_fraction)
+        object.__setattr__(self, "min_obstacles", min_obstacles)
+        object.__setattr__(self, "max_obstacles", max_obstacles)
+        object.__setattr__(self, "require_path_blocker", require_path_blocker)
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "PyBulletCurriculumPhaseSettings":
+        return cls(
+            name=mapping.get("name", ""),
+            end_fraction=mapping.get("end_fraction", 0.0),
+            min_obstacles=mapping.get("min_obstacles", 0),
+            max_obstacles=mapping.get("max_obstacles", 0),
+            require_path_blocker=mapping.get("require_path_blocker", False),
+        )
+
+
+@dataclass(frozen=True)
+class PyBulletCurriculumSettings:
+    enabled: bool = False
+    phases: tuple[PyBulletCurriculumPhaseSettings, ...] = ()
+
+    def __post_init__(self) -> None:
+        enabled = _bool_value("enabled", self.enabled)
+        phases = tuple(self.phases)
+        if enabled and not phases:
+            raise ValueError("phases must not be empty")
+        boundaries = tuple(phase.end_fraction for phase in phases)
+        if any(right <= left for left, right in zip(boundaries, boundaries[1:])):
+            raise ValueError("end_fraction values must be strictly increasing")
+        if phases and not math.isclose(boundaries[-1], 1.0, rel_tol=0.0, abs_tol=1e-12):
+            raise ValueError("final curriculum end_fraction must equal 1.0")
+        object.__setattr__(self, "enabled", enabled)
+        object.__setattr__(self, "phases", phases)
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "PyBulletCurriculumSettings":
+        raw_phases = mapping.get("phases", ())
+        if raw_phases is None:
+            raw_phases = ()
+        if isinstance(raw_phases, str) or not isinstance(raw_phases, Sequence):
+            raise ValueError("phases must be a list")
+        phases = []
+        for phase in raw_phases:
+            if not isinstance(phase, Mapping):
+                raise ValueError("curriculum phases must be mappings")
+            phases.append(PyBulletCurriculumPhaseSettings.from_mapping(phase))
+        return cls(enabled=mapping.get("enabled", False), phases=tuple(phases))
+
+    def phase_for(self, progress: float) -> PyBulletCurriculumPhaseSettings:
+        numeric = _unit_interval_float("progress", progress)
+        if not self.enabled or not self.phases:
+            raise ValueError("curriculum is not enabled")
+        return next((phase for phase in self.phases if numeric < phase.end_fraction), self.phases[-1])
 
 
 @dataclass(frozen=True)
@@ -192,6 +307,8 @@ class TrainingSettings:
     pybullet_obstacle_randomization: PyBulletObstacleRandomizationSettings = field(
         default_factory=PyBulletObstacleRandomizationSettings
     )
+    pybullet_reward: PyBulletRewardSettings = field(default_factory=PyBulletRewardSettings)
+    pybullet_curriculum: PyBulletCurriculumSettings = field(default_factory=PyBulletCurriculumSettings)
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> "TrainingSettings":
@@ -204,6 +321,10 @@ class TrainingSettings:
             baseline=BaselineMetadata.from_mapping(_mapping_section(mapping, "baseline")),
             pybullet_obstacle_randomization=PyBulletObstacleRandomizationSettings.from_mapping(
                 _mapping_section(mapping, "pybullet_obstacle_randomization")
+            ),
+            pybullet_reward=PyBulletRewardSettings.from_mapping(_mapping_section(mapping, "pybullet_reward")),
+            pybullet_curriculum=PyBulletCurriculumSettings.from_mapping(
+                _mapping_section(mapping, "pybullet_curriculum")
             ),
         )
 
@@ -423,6 +544,13 @@ def _positive_int(name: str, value: Any) -> int:
     numeric = int(value)
     if numeric <= 0:
         raise ValueError(f"{name} must be positive")
+    return numeric
+
+
+def _non_negative_int(name: str, value: Any) -> int:
+    numeric = int(value)
+    if numeric < 0:
+        raise ValueError(f"{name} must be non-negative")
     return numeric
 
 
