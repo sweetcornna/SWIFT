@@ -19,8 +19,9 @@ def _source_payload() -> dict:
             "aggregate_total_timesteps": 300000,
         },
         "holdout": {
-            "seed_start": 1000000,
-            "seed_end": 1000099,
+            "kind": "reserved_final",
+            "seed_start": 2000000,
+            "seed_end": 2000099,
             "episodes_per_checkpoint": 100,
             "total_episodes": 300,
         },
@@ -53,8 +54,8 @@ def test_pybullet_robustness_gate_accepts_strict_worst_case_thresholds(tmp_path:
 
     assert report["record_type"] == "pybullet_robustness_gate_report"
     assert report["readiness"]["robustness_claim"] is True
-    assert report["readiness"]["passed_gates"] == 8
-    assert report["readiness"]["required_gates"] == 8
+    assert report["readiness"]["passed_gates"] == 10
+    assert report["readiness"]["required_gates"] == 10
     assert all(gate["passed"] for gate in report["gates"])
     manifest = json.loads(output.with_suffix(".manifest.json").read_text(encoding="utf-8"))
     assert {item["role"] for item in manifest["inputs"]} == {"pybullet_holdout_report"}
@@ -67,6 +68,9 @@ def test_pybullet_robustness_gate_accepts_strict_worst_case_thresholds(tmp_path:
         (lambda report: report["readiness"].update(all_checkpoints_evaluated=False), "all_checkpoints_evaluated"),
         (lambda report: report["training"].update(seed_count=2), "training_seed_count"),
         (lambda report: report["training"].update(min_total_timesteps=99999), "min_total_timesteps"),
+        (lambda report: report["holdout"].update(kind="development"), "reserved_final_holdout"),
+        (lambda report: report["holdout"].update(seed_start=500000), "reserved_final_holdout_range"),
+        (lambda report: report["holdout"].update(seed_end=2000098), "reserved_final_holdout_range"),
         (lambda report: report["holdout"].update(episodes_per_checkpoint=99), "holdout_episodes_per_checkpoint"),
         (lambda report: report["metrics"].update(worst_success_rate=0.94), "worst_success_rate"),
         (lambda report: report["metrics"].update(max_collision_rate=0.01), "max_collision_rate"),

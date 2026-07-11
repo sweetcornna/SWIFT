@@ -82,6 +82,8 @@ def test_pybullet_multi_seed_training_writes_child_runs_and_worst_case_metrics(
         report = {
             "record_type": "pybullet_ppo_training_report",
             "run_id": f"seed-{config.seed}",
+            "lineage": {"config_hash": f"config-{config.seed}"},
+            "runtime": {"runtime_contract": "pybullet_velocity_training_compatibility"},
             "metrics": {**metrics, "average_episode_return": 10.0 + config.seed},
             "training": {
                 **metrics,
@@ -127,6 +129,12 @@ def test_pybullet_multi_seed_training_writes_child_runs_and_worst_case_metrics(
     assert report["metrics"]["max_timeout_rate"] == pytest.approx(0.04)
     assert report["readiness"]["all_seeds_completed"] is True
     assert len(report["seed_runs"]) == 3
+    assert report["seed_runs"][0]["lineage"]["config_hash"] == "config-8"
+    assert report["seed_runs"][0]["runtime"]["runtime_contract"] == (
+        "pybullet_velocity_training_compatibility"
+    )
+    assert report["lineage"]["task_contract_hash"] == report["task_contract"]["hash"]
+    assert report["task_contract"]["settings"]["environment"]["goal"] == [0.5, 0.0, 0.1125]
     assert json.loads(output.read_text(encoding="utf-8")) == report
     manifest = json.loads(output.with_suffix(".manifest.json").read_text(encoding="utf-8"))
     assert {item["role"] for item in manifest["inputs"]} == {

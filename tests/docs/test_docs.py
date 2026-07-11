@@ -76,3 +76,6 @@ def test_readme_documents_pybullet_curriculum_seed_hygiene_and_gates():
         "pybullet_curriculum_3x150k.json",
     ]:
         assert required in text
+
+    assert "obsolete pre-accumulated-heading evidence" in text
+    assert "Current randomized-final status: failed" in text

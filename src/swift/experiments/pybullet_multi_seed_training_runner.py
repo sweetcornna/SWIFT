@@ -17,6 +17,7 @@ from swift.experiments.pybullet_training_runner import (
     PyBulletPPOTrainingRunConfig,
     run_pybullet_ppo_training,
 )
+from swift.experiments.pybullet_task_contract import build_pybullet_task_contract
 
 if TYPE_CHECKING:
     from swift.config import SimulationSettings, TrainingSettings
@@ -51,6 +52,7 @@ def run_pybullet_multi_seed_training(config: PyBulletMultiSeedTrainingConfig) ->
     total_timesteps = config.total_timesteps or config.training_settings.run.total_timesteps
     writer = ExperimentArtifactWriter(config.training_settings.artifact)
     config_hash = _config_hash(config, total_timesteps)
+    task_contract = build_pybullet_task_contract(config.training_settings)
     stage = config.training_settings.run.stage
     variant = "pybullet_multi_seed_training"
     run_id = build_run_id(
@@ -85,6 +87,8 @@ def run_pybullet_multi_seed_training(config: PyBulletMultiSeedTrainingConfig) ->
             "completed": _completed(report, total_timesteps),
             "metrics": dict(report["metrics"]),
             "training": dict(report["training"]),
+            "lineage": dict(report.get("lineage", {})),
+            "runtime": dict(report.get("runtime", {})),
             "artifacts": dict(report["artifacts"]),
         }
         for seed, report in zip(config.seeds, child_reports, strict=True)
@@ -99,9 +103,11 @@ def run_pybullet_multi_seed_training(config: PyBulletMultiSeedTrainingConfig) ->
         "generated_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "lineage": {
             "config_hash": config_hash,
+            "task_contract_hash": task_contract["hash"],
             "source_runner": "swift.experiments.pybullet_training_runner.run_pybullet_ppo_training",
             "training_backend": "torch_ppo_mlp_pybullet_velocity",
         },
+        "task_contract": task_contract,
         "seeds": list(config.seeds),
         "seed_count": len(config.seeds),
         "total_timesteps": total_timesteps,

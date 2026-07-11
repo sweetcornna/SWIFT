@@ -347,6 +347,10 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ch
 - `timeout_rate=0.0`
 - `runtime_contract=pybullet_velocity_training_compatibility`
 
+These metrics are obsolete pre-accumulated-heading evidence. They were produced
+when `heading_delta` was interpreted as an absolute heading, so they do not
+demonstrate navigation under the current accumulated-heading action contract.
+
 ### 10.3 tuned explicit SWIFT-obstacle 训练
 
 ```powershell
@@ -369,7 +373,18 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ch
 - `timeout_rate=0.0`
 - `average_minimum_safety_distance=0.13011363294349707`
 
+These metrics are also obsolete pre-accumulated-heading evidence. The obstacle
+was outside the direct-path safety corridor, and the historical run does not
+establish current-contract obstacle avoidance.
+
 ### 10.4 randomized PyBullet robustness training
+
+Current randomized-final status: failed. On 2026-07-11, the corrected
+`max_heading_delta=0.02` no-obstacle diagnostic reached `0.4407` training
+success and `20/20` deterministic development successes, but the 32,768-step
+curriculum pilot reached `0/20` validation successes and `20/20` collisions.
+The 100,000-step candidate, full 3 x 150,000 run, and reserved final holdout
+have not been run and no robustness claim exists.
 
 随机训练使用四阶段课程：无障碍、单个可选障碍、单个路径阻挡障碍、最终 1–3 个随机障碍。CF2X 的 `0.061 m` 碰撞外廓会参与起点、目标点和路径阻挡判定。
 

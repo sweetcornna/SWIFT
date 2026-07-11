@@ -17,6 +17,14 @@ from swift.experiments.pybullet_checkpoint_evaluator import (
     PyBulletCheckpointEvaluationConfig,
     run_pybullet_checkpoint_evaluation,
 )
+from swift.experiments.pybullet_evidence import (
+    DEVELOPMENT_SEED_START,
+    classify_pybullet_holdout,
+)
+from swift.experiments.pybullet_task_contract import (
+    build_pybullet_task_contract,
+    hash_pybullet_task_contract_settings,
+)
 
 if TYPE_CHECKING:
     from swift.config import SimulationSettings, TrainingSettings
@@ -30,7 +38,7 @@ class PyBulletMultiSeedCheckpointEvaluationConfig:
     training_config_path: Path | None = None
     simulation_config_path: Path | None = None
     episodes_per_checkpoint: int = 100
-    holdout_seed: int = 1_000_000
+    holdout_seed: int = DEVELOPMENT_SEED_START
     output: Path | None = None
 
     def __post_init__(self) -> None:
@@ -53,11 +61,13 @@ def run_pybullet_multi_seed_checkpoint_evaluation(
     config: PyBulletMultiSeedCheckpointEvaluationConfig,
 ) -> dict[str, Any]:
     source = _load_training_report(config.training_report_path)
+    task_contract = _validate_task_contract(source, config.training_settings)
     seed_runs = source.get("seed_runs", [])
     if not isinstance(seed_runs, list) or not seed_runs:
         raise ValueError("training report must contain seed_runs")
     training_seeds = {int(run["seed"]) for run in seed_runs}
-    holdout_seeds = set(range(config.holdout_seed, config.holdout_seed + config.episodes_per_checkpoint))
+    holdout_seed_end = config.holdout_seed + config.episodes_per_checkpoint - 1
+    holdout_seeds = set(range(config.holdout_seed, holdout_seed_end + 1))
     if training_seeds & holdout_seeds:
         raise ValueError("holdout seeds must not overlap training seeds")
 
@@ -122,9 +132,11 @@ def run_pybullet_multi_seed_checkpoint_evaluation(
         "source_run_id": str(source.get("run_id", "")),
         "lineage": {
             "config_hash": config_hash,
+            "task_contract_hash": task_contract["hash"],
             "source_runner": "swift.experiments.pybullet_checkpoint_evaluator.run_pybullet_checkpoint_evaluation",
             "evaluation_backend": "deterministic_randomized_pybullet_checkpoint_holdout",
         },
+        "task_contract": task_contract,
         "training": {
             "seed_count": len(seed_runs),
             "seeds": sorted(training_seeds),
@@ -134,8 +146,9 @@ def run_pybullet_multi_seed_checkpoint_evaluation(
             ),
         },
         "holdout": {
+            "kind": classify_pybullet_holdout(config.holdout_seed, holdout_seed_end),
             "seed_start": config.holdout_seed,
-            "seed_end": config.holdout_seed + config.episodes_per_checkpoint - 1,
+            "seed_end": holdout_seed_end,
             "episodes_per_checkpoint": config.episodes_per_checkpoint,
             "total_episodes": config.episodes_per_checkpoint * len(evaluations),
         },
@@ -193,6 +206,27 @@ def _load_training_report(path: Path) -> dict[str, Any]:
     if not report.get("readiness", {}).get("all_seeds_completed", False):
         raise ValueError("all training seeds must be completed before holdout evaluation")
     return report
+
+
+def _validate_task_contract(
+    source: dict[str, Any],
+    training_settings: TrainingSettings,
+) -> dict[str, Any]:
+    source_contract = source.get("task_contract")
+    source_hash = source.get("lineage", {}).get("task_contract_hash")
+    if not isinstance(source_contract, dict) or not isinstance(source_hash, str) or not source_hash:
+        raise ValueError("training report must contain task contract")
+    source_settings = source_contract.get("settings")
+    if not isinstance(source_settings, dict):
+        raise ValueError("training report task contract must contain settings")
+    if source_contract.get("hash") != source_hash:
+        raise ValueError("training report task contract hash is inconsistent")
+    if hash_pybullet_task_contract_settings(source_settings) != source_hash:
+        raise ValueError("training report task contract settings do not match hash")
+    current_contract = build_pybullet_task_contract(training_settings)
+    if current_contract["hash"] != source_hash:
+        raise ValueError("evaluation task contract does not match training report")
+    return source_contract
 
 
 def _config_hash(

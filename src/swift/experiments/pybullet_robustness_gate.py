@@ -14,6 +14,10 @@ from swift.experiments.artifacts import (
     build_artifact_manifest,
     build_run_id,
 )
+from swift.experiments.pybullet_evidence import (
+    FINAL_HOLDOUT_SEED_END,
+    FINAL_HOLDOUT_SEED_START,
+)
 
 
 BOUNDARY_NOTES = (
@@ -151,6 +155,25 @@ def _gates(
             "min_total_timesteps",
             int(training.get("min_total_timesteps", 0)),
             thresholds.min_total_timesteps,
+        ),
+        _gate(
+            "reserved_final_holdout",
+            str(holdout.get("kind", "")),
+            "reserved_final",
+            str(holdout.get("kind", "")) == "reserved_final",
+        ),
+        _gate(
+            "reserved_final_holdout_range",
+            {
+                "seed_start": int(holdout.get("seed_start", -1)),
+                "seed_end": int(holdout.get("seed_end", -1)),
+            },
+            {
+                "seed_start": FINAL_HOLDOUT_SEED_START,
+                "seed_end": FINAL_HOLDOUT_SEED_END,
+            },
+            int(holdout.get("seed_start", -1)) == FINAL_HOLDOUT_SEED_START
+            and int(holdout.get("seed_end", -1)) == FINAL_HOLDOUT_SEED_END,
         ),
         _minimum_gate(
             "holdout_episodes_per_checkpoint",

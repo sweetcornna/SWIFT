@@ -15,11 +15,15 @@ from swift.envs import SimpleAvoidanceSettings
 from swift.experiments import ExperimentArtifactConfig
 
 
-def _settings(tmp_path: Path) -> TrainingSettings:
+def _settings(
+    tmp_path: Path,
+    *,
+    goal: tuple[float, float, float] = (0.5, 0.0, 0.1125),
+) -> TrainingSettings:
     return TrainingSettings(
         environment=SimpleAvoidanceSettings(
             start=(0.0, 0.0, 0.1125),
-            goal=(0.5, 0.0, 0.1125),
+            goal=goal,
             safety_margin=0.1,
         ),
         run=TrainingRunSettings(
@@ -50,6 +54,9 @@ def _simulation_settings(tmp_path: Path) -> SimulationSettings:
 
 
 def _write_training_report(tmp_path: Path, *, seeds: tuple[int, ...] = (8, 9, 10)) -> Path:
+    from swift.experiments.pybullet_task_contract import build_pybullet_task_contract
+
+    task_contract = build_pybullet_task_contract(_settings(tmp_path))
     seed_runs = []
     for seed in seeds:
         checkpoint = tmp_path / f"seed_{seed}.ckpt"
@@ -74,6 +81,8 @@ def _write_training_report(tmp_path: Path, *, seeds: tuple[int, ...] = (8, 9, 10
             {
                 "record_type": "pybullet_multi_seed_training_report",
                 "run_id": "training-run",
+                "lineage": {"task_contract_hash": task_contract["hash"]},
+                "task_contract": task_contract,
                 "seeds": list(seeds),
                 "seed_count": len(seeds),
                 "total_timesteps": 100000,
@@ -155,7 +164,9 @@ def test_multi_seed_holdout_evaluates_same_scenarios_and_aggregates_worst_case(
     assert report["record_type"] == "pybullet_multi_seed_checkpoint_holdout_report"
     assert report["holdout"]["seed_start"] == 1000000
     assert report["holdout"]["seed_end"] == 1000099
+    assert report["holdout"]["kind"] == "consumed"
     assert report["holdout"]["episodes_per_checkpoint"] == 100
+    assert report["lineage"]["task_contract_hash"] == report["task_contract"]["hash"]
     assert report["metrics"]["worst_success_rate"] == pytest.approx(0.95)
     assert report["metrics"]["max_collision_rate"] == pytest.approx(0.0)
     assert report["metrics"]["max_timeout_rate"] == pytest.approx(0.05)
@@ -188,6 +199,90 @@ def test_multi_seed_holdout_rejects_training_seed_overlap(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="holdout seeds must not overlap training seeds"):
         run_pybullet_multi_seed_checkpoint_evaluation(config)
+
+
+def test_multi_seed_holdout_defaults_to_development_seed_range(tmp_path: Path) -> None:
+    from swift.experiments.pybullet_multi_seed_checkpoint_evaluator import (
+        PyBulletMultiSeedCheckpointEvaluationConfig,
+    )
+
+    config = PyBulletMultiSeedCheckpointEvaluationConfig(
+        training_report_path=_write_training_report(tmp_path),
+        training_settings=_settings(tmp_path),
+        simulation_settings=_simulation_settings(tmp_path),
+    )
+
+    assert config.holdout_seed == 500000
+
+
+def test_multi_seed_holdout_rejects_task_contract_drift_before_evaluation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import swift.experiments.pybullet_multi_seed_checkpoint_evaluator as evaluator
+    from swift.experiments.pybullet_multi_seed_checkpoint_evaluator import (
+        PyBulletMultiSeedCheckpointEvaluationConfig,
+        run_pybullet_multi_seed_checkpoint_evaluation,
+    )
+
+    monkeypatch.setattr(
+        evaluator,
+        "run_pybullet_checkpoint_evaluation",
+        lambda config: pytest.fail("checkpoint evaluation must not run after task-contract drift"),
+    )
+
+    with pytest.raises(ValueError, match="task contract does not match"):
+        run_pybullet_multi_seed_checkpoint_evaluation(
+            PyBulletMultiSeedCheckpointEvaluationConfig(
+                training_report_path=_write_training_report(tmp_path),
+                training_settings=_settings(tmp_path, goal=(0.6, 0.0, 0.1125)),
+                simulation_settings=_simulation_settings(tmp_path),
+                output=tmp_path / "holdout.json",
+            )
+        )
+
+
+def test_multi_seed_holdout_rejects_training_report_without_task_contract(tmp_path: Path) -> None:
+    from swift.experiments.pybullet_multi_seed_checkpoint_evaluator import (
+        PyBulletMultiSeedCheckpointEvaluationConfig,
+        run_pybullet_multi_seed_checkpoint_evaluation,
+    )
+
+    training_report = _write_training_report(tmp_path)
+    payload = json.loads(training_report.read_text(encoding="utf-8"))
+    payload.pop("task_contract")
+    payload["lineage"].pop("task_contract_hash")
+    training_report.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="training report must contain task contract"):
+        run_pybullet_multi_seed_checkpoint_evaluation(
+            PyBulletMultiSeedCheckpointEvaluationConfig(
+                training_report_path=training_report,
+                training_settings=_settings(tmp_path),
+                simulation_settings=_simulation_settings(tmp_path),
+            )
+        )
+
+
+def test_multi_seed_holdout_rejects_tampered_task_contract_settings(tmp_path: Path) -> None:
+    from swift.experiments.pybullet_multi_seed_checkpoint_evaluator import (
+        PyBulletMultiSeedCheckpointEvaluationConfig,
+        run_pybullet_multi_seed_checkpoint_evaluation,
+    )
+
+    training_report = _write_training_report(tmp_path)
+    payload = json.loads(training_report.read_text(encoding="utf-8"))
+    payload["task_contract"]["settings"]["environment"]["goal"] = [0.6, 0.0, 0.1125]
+    training_report.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="task contract settings do not match hash"):
+        run_pybullet_multi_seed_checkpoint_evaluation(
+            PyBulletMultiSeedCheckpointEvaluationConfig(
+                training_report_path=training_report,
+                training_settings=_settings(tmp_path),
+                simulation_settings=_simulation_settings(tmp_path),
+            )
+        )
 
 
 def test_multi_seed_holdout_rejects_wrong_training_record_type(tmp_path: Path) -> None:

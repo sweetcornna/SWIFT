@@ -34,8 +34,10 @@ Two independent causes were reproduced:
    increasing goal distance from `0.5 m` to `0.883 m`.
 
 The previously solved fixed-obstacle configuration does not establish obstacle
-avoidance: its sphere is outside the direct-path safety corridor. It only
-establishes that the PPO and PyBullet stack can learn basic goal reaching.
+avoidance: its sphere is outside the direct-path safety corridor. It also does
+not establish goal reaching under the current accumulated-heading contract.
+That run used the earlier absolute-heading interpretation, where near-zero
+actions naturally kept the vehicle moving toward the positive x-axis.
 
 ## Boundaries
 
