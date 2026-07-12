@@ -419,6 +419,69 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ro
 
 严格门槛保持不变：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。最终结果为最差成功率 `0.99`、最大碰撞率 `0.0`、最大超时率 `0.01`、最差平均最小安全距离 `0.12744620047273952`，并记录 `robustness_claim=true`、`passed_gates=10/10`。gate 失败仍会写报告，但不形成 robustness claim；该结论仅覆盖单无人机、headless、静态障碍 PyBullet 仿真，不等于真实飞行安全证据。
 
+## 10.5 SWIFT-native robust hover 集成
+
+此入口是独立的 stabilized-hover 能力，不修改第 10.4 节的 SWIFT
+navigation、累计航向、障碍课程或 APF/HCA 行为。SWIFT 拥有配置、动作契约、
+哈希绑定和发布逻辑；外部 PyBullet 仿真/训练底座不会被复制进本仓库。
+默认 `configs/simulation.yaml` 假定它位于本仓库的相邻 `../pybullet` 目录；其他布局可通过
+自定义 simulation config 指定。
+
+默认科学配置位于 `configs/pybullet_hover.yaml`：
+
+- `ct_att_yawrate_v1`：collective thrust + roll/pitch attitude + yaw rate；
+- `(1,72)` observation / `(1,4)` action，30 Hz 控制、240 Hz physics；
+- `robust_uniform_v1` reset、`hover_kin_safe_v1` reward；
+- 只更新前 12 个物理 observation 的 `train_rms_physical12_v1`；
+- 固定 100-case held-out bank，按 safety completion、p95 altitude MAE、return
+  做 lexicographic robust checkpoint selection。
+
+先做不启动训练的契约检查：
+
+```powershell
+python scripts\run_pybullet_hover_training.py --dry-run
+python scripts\run_pybullet_hover_training.py --help
+python scripts\run_pybullet_hover_eval.py --help
+python scripts\run_pybullet_hover_viz.py --help
+```
+
+训练、只读评估和后处理可视化：
+
+```powershell
+python scripts\run_pybullet_hover_training.py --run-name swift-hover-seed1 --timeout 21600
+python scripts\run_pybullet_hover_eval.py --model <run>\robust_best_model.zip --output <new-eval-dir> --evaluation-seed 101 --cases 100 --timeout 3600
+python scripts\run_pybullet_hover_viz.py --input <eval-dir> --output <new-viz-dir> --html --timeout 600
+```
+
+训练 summary schema 5 将每个 `best`、`robust_best`、`final` ZIP 与精确
+`.obsnorm.npz` sidecar 通过 SHA-256 绑定。评估拒绝未绑定或被修改的模型，并检查
+输入训练目录在运行前后完全不变。
+
+### 120k 三种子已训练模型
+
+`artifacts/robust-hover/120k/` 发布 seeds 1–3 的 120,000 requested-step
+`robust_best_model.zip` 和 `final_model.zip`、各自精确 normalization sidecar、
+`action_profile.json`、`source_hashes.json`、`summary.json`、compact evaluation
+JSON 和 `manifest.sha256.json`。不复制 `evaluation.npz`、训练 callback NPZ、
+validation bank、trajectory bulk 或整个 PyBullet substrate。
+
+三个 120k run 的实际 PPO timesteps 都是 120,832；robust-best 选择点分别是
+seed 1: 110k、seed 2: 100k、seed 3: 110k。独立 100-case evaluations 均为
+`accepted`，但证据范围仅为 single-drone、headless PyBullet stabilized hover，
+不是导航能力或真实飞行安全证明。
+
+可从本地已验证底座重新生成 curated bundle：
+
+```powershell
+python scripts\publish_pybullet_hover_models.py `
+  --training-run ..\pybullet\results\ppo\ppo-hover-ct-att-yawrate-v1-120k-seed1-r1 `
+  --training-run ..\pybullet\results\ppo\ppo-hover-ct-att-yawrate-v1-120k-seed2-r1 `
+  --training-run ..\pybullet\results\ppo\ppo-hover-ct-att-yawrate-v1-120k-seed3-r1 `
+  --evaluation ..\pybullet\results\ppo-evaluation\ct-att-yawrate-v1-120k-seed1-robust-best-r1 `
+  --evaluation ..\pybullet\results\ppo-evaluation\ct-att-yawrate-v1-120k-seed2-robust-best-r1 `
+  --evaluation ..\pybullet\results\ppo-evaluation\ct-att-yawrate-v1-120k-seed3-robust-best-r1
+```
+
 ## 11. 产物在哪里
 
 运行脚本会生成：
@@ -458,6 +521,7 @@ PyBullet checkpoint 评估报告：
 | 文件 | 用途 |
 | --- | --- |
 | [configs/simulation.yaml](configs/simulation.yaml) | 本地 PyBullet 底座路径和 Pixi 任务 |
+| [configs/pybullet_hover.yaml](configs/pybullet_hover.yaml) | stabilized-hover 训练、normalization 和 robust selection 契约 |
 | [configs/training.yaml](configs/training.yaml) | repo-native 默认训练配置 |
 | [configs/training_pybullet_probe.yaml](configs/training_pybullet_probe.yaml) | PyBullet no-obstacle 可达速度控制训练 |
 | [configs/training_pybullet_obstacles.yaml](configs/training_pybullet_obstacles.yaml) | PyBullet 显式 SWIFT obstacle 训练 |
