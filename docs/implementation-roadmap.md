@@ -70,8 +70,16 @@ safety.
 The curriculum-training follow-up corrects randomized spawn geometry with the
 CF2X collision envelope, scales goal progress, adds an explicit timeout cost,
 and moves from goal reaching through single blockers to the final 1-3 obstacle
-distribution. A real-runtime geometry gate and successive 2,048, 32,768, and
-100,000-step pilots must pass before the 3 x 150,000-step candidate is allowed.
+distribution. The completed follow-up expands the observation contract to 27D
+with three sorted obstacle slots, adds a deterministic visibility-graph
+waypoint prior, and bounds the learned PPO residual to preserve planner intent.
+A real-runtime geometry gate and successive 2,048, 32,768, and 100,000-step
+pilots passed before the 3 x 150,000-step final run was started.
 Development validation uses seeds `500000..500099`; the consumed
 `1000000..1000099` range is excluded from tuning, and `2000000..2000099` is
-reserved for final evidence.
+reserved for final evidence. On 2026-07-12, the one-time reserved holdout passed
+all 10 strict gates: worst success rate `0.99`, maximum collision rate `0.0`,
+maximum timeout rate `0.01`, and worst average minimum safety distance
+`0.12744620047273952`. This closes the static-obstacle PyBullet robustness
+milestone only; real-flight safety and dynamic multi-drone evaluation remain
+future evidence stages.

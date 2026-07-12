@@ -73,9 +73,10 @@ def test_readme_documents_pybullet_curriculum_seed_hygiene_and_gates():
         "500000..500099",
         "1000000..1000099",
         "2000000..2000099",
-        "pybullet_curriculum_3x150k.json",
+        "pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k.json",
     ]:
         assert required in text
 
     assert "obsolete pre-accumulated-heading evidence" in text
-    assert "Current randomized-final status: failed" in text
+    assert "Current randomized-final status: passed" in text
+    assert "passed_gates=10/10" in text
