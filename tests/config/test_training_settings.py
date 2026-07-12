@@ -6,6 +6,7 @@ import pytest
 
 from swift.config import (
     BaselineMetadata,
+    PyBulletAPFActionPriorSettings,
     TrainingRunSettings,
     TrainingSettings,
     load_training_settings,
@@ -260,6 +261,51 @@ pybullet_curriculum:
     assert settings.pybullet_curriculum.phase_for(1.0).name == "randomized_final"
 
 
+def test_load_training_settings_parses_pybullet_apf_action_prior(tmp_path: Path) -> None:
+    config_path = tmp_path / "apf-prior.yaml"
+    config_path.write_text(
+        """
+pybullet_apf_action_prior:
+  enabled: true
+  attractive_gain: 1.0
+  repulsive_gain: 0.02
+  influence_radius: 0.4
+  max_repulsive_magnitude: 10.0
+  epsilon: 0.000001
+  ignore_obstacles_behind: true
+  bypass_enabled: true
+  bypass_lateral_offset: 0.25
+  bypass_forward_margin: 0.08
+  bypass_clearance: 0.16
+  visibility_planner_enabled: true
+  visibility_clearance: 0.18
+  visibility_samples: 16
+  policy_residual_scale: 0.25
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_training_settings(config_path)
+
+    assert settings.pybullet_apf_action_prior == PyBulletAPFActionPriorSettings(
+        enabled=True,
+        attractive_gain=1.0,
+        repulsive_gain=0.02,
+        influence_radius=0.4,
+        max_repulsive_magnitude=10.0,
+        epsilon=0.000001,
+        ignore_obstacles_behind=True,
+        bypass_enabled=True,
+        bypass_lateral_offset=0.25,
+        bypass_forward_margin=0.08,
+        bypass_clearance=0.16,
+        visibility_planner_enabled=True,
+        visibility_clearance=0.18,
+        visibility_samples=16,
+        policy_residual_scale=0.25,
+    )
+
+
 @pytest.mark.parametrize(
     ("yaml_body", "message"),
     [
@@ -368,9 +414,23 @@ def test_pybullet_randomized_training_config_uses_strict_robustness_defaults() -
     assert settings.run.total_timesteps == 150000
     assert settings.environment.start == pytest.approx((0.0, 0.0, 0.1125))
     assert settings.environment.goal == pytest.approx((0.5, 0.0, 0.1125))
+    assert settings.environment.max_steps == 1200
     assert settings.environment.safety_margin == pytest.approx(0.1)
     assert settings.environment.obstacles == ()
-    assert settings.policy.max_heading_delta == pytest.approx(0.02)
+    assert settings.policy.max_heading_delta == pytest.approx(0.2)
+    assert settings.policy.min_speed_fraction == pytest.approx(1.0)
+    assert settings.pybullet_apf_action_prior.enabled is True
+    assert settings.pybullet_apf_action_prior.repulsive_gain == pytest.approx(0.002)
+    assert settings.pybullet_apf_action_prior.influence_radius == pytest.approx(0.4)
+    assert settings.pybullet_apf_action_prior.ignore_obstacles_behind is True
+    assert settings.pybullet_apf_action_prior.bypass_enabled is False
+    assert settings.pybullet_apf_action_prior.bypass_lateral_offset == pytest.approx(0.25)
+    assert settings.pybullet_apf_action_prior.bypass_forward_margin == pytest.approx(0.08)
+    assert settings.pybullet_apf_action_prior.bypass_clearance == pytest.approx(0.16)
+    assert settings.pybullet_apf_action_prior.visibility_planner_enabled is True
+    assert settings.pybullet_apf_action_prior.visibility_clearance == pytest.approx(0.18)
+    assert settings.pybullet_apf_action_prior.visibility_samples == 16
+    assert settings.pybullet_apf_action_prior.policy_residual_scale == pytest.approx(0.25)
     assert randomization.enabled is True
     assert (randomization.min_obstacles, randomization.max_obstacles) == (1, 3)
     assert randomization.x_range == pytest.approx((0.12, 0.38))

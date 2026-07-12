@@ -101,8 +101,10 @@ def run_pybullet_checkpoint_evaluation(config: PyBulletCheckpointEvaluationConfi
             "pybullet_root": str(config.simulation_settings.pybullet_root),
             "pixi_executable": str(config.simulation_settings.pixi_executable),
             "enable_pybullet_obstacles": bool(config.enable_pybullet_obstacles),
+            "observation_shape": [_observation_dim(config.training_settings)],
             "obstacle_randomization": asdict(config.training_settings.pybullet_obstacle_randomization),
             "reward": asdict(config.training_settings.pybullet_reward),
+            "apf_action_prior": asdict(config.training_settings.pybullet_apf_action_prior),
             "curriculum": asdict(config.training_settings.pybullet_curriculum),
         },
         "checkpoint_training": dict(checkpoint.get("result", {})),
@@ -216,6 +218,13 @@ def _config_hash(config: PyBulletCheckpointEvaluationConfig) -> str:
         )
     ).encode("utf-8")
     return hashlib.sha256(material).hexdigest()
+
+
+def _observation_dim(training_settings: TrainingSettings) -> int:
+    randomization = training_settings.pybullet_obstacle_randomization
+    if not randomization.enabled:
+        return 15
+    return 15 + 4 * int(randomization.max_obstacles)
 
 
 def _manifest_sidecar_path(output_path: Path) -> Path:

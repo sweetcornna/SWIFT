@@ -147,8 +147,10 @@ def _training_config(
         seed=config.seed if config.seed is not None else config.training_settings.run.seed,
         torch_num_threads=1,
         network=MLPActorCriticConfig(
+            observation_dim=_observation_dim(config.training_settings),
             max_heading_delta=config.training_settings.policy.max_heading_delta,
             min_speed_fraction=config.training_settings.policy.min_speed_fraction,
+            apf_action_prior=config.training_settings.pybullet_apf_action_prior.to_apf_config(),
         ),
         checkpoint_path=checkpoint_path,
         history_path=history_path,
@@ -183,8 +185,10 @@ def _summary_payload(
             "pybullet_root": str(config.simulation_settings.pybullet_root),
             "pixi_executable": str(config.simulation_settings.pixi_executable),
             "enable_pybullet_obstacles": bool(config.enable_pybullet_obstacles),
+            "observation_shape": [_observation_dim(config.training_settings)],
             "obstacle_randomization": asdict(config.training_settings.pybullet_obstacle_randomization),
             "reward": asdict(config.training_settings.pybullet_reward),
+            "apf_action_prior": asdict(config.training_settings.pybullet_apf_action_prior),
             "curriculum": asdict(config.training_settings.pybullet_curriculum),
         },
         "training": training,
@@ -218,6 +222,13 @@ def _config_hash(
         )
     ).encode("utf-8")
     return hashlib.sha256(material).hexdigest()
+
+
+def _observation_dim(training_settings: TrainingSettings) -> int:
+    randomization = training_settings.pybullet_obstacle_randomization
+    if not randomization.enabled:
+        return 15
+    return 15 + 4 * int(randomization.max_obstacles)
 
 
 def _manifest_sidecar_path(output_path: Path) -> Path:

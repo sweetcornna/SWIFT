@@ -61,6 +61,10 @@ class PyBulletVelocityTrainingEnv:
         self._obstacle_randomization = obstacle_randomization
         self._reward_settings = reward_settings
         self._curriculum = curriculum
+        self._obstacle_observation_slots = (
+            int(obstacle_randomization.max_obstacles) if obstacle_randomization.enabled else 0
+        )
+        self.observation_shape = (15 + 4 * self._obstacle_observation_slots,)
         self._training_progress = 1.0
         self._active_curriculum_phase: PyBulletCurriculumPhaseSettings | None = None
         self._active_obstacles = self.settings.obstacles
@@ -213,12 +217,14 @@ class PyBulletVelocityTrainingEnv:
         relative_goal = tuple(self.settings.goal[index] - position[index] for index in range(3))
         relative_obstacle, obstacle_radius = self._obstacle_tail(position, runtime_info)
         goal_distance = _distance(position, self.settings.goal)
+        obstacle_slots = self._observation_obstacle_slots(position)
         return (
             *observation[0:7],
             *relative_goal,
             *relative_obstacle,
             obstacle_radius,
             goal_distance,
+            *obstacle_slots,
         )
 
     def _obstacle_tail(
@@ -240,6 +246,28 @@ class PyBulletVelocityTrainingEnv:
         )
         relative = tuple(float(nearest.position[index]) - float(position[index]) for index in range(3))
         return relative, float(nearest.radius)
+
+    def _observation_obstacle_slots(self, position: Sequence[float]) -> tuple[float, ...]:
+        if self._obstacle_observation_slots <= 0:
+            return ()
+
+        values: list[float] = []
+        obstacles = sorted(
+            self._active_obstacles,
+            key=lambda obstacle: _distance(position, obstacle.position),
+        )
+        for obstacle in obstacles[: self._obstacle_observation_slots]:
+            values.extend(
+                (
+                    float(obstacle.position[0]) - float(position[0]),
+                    float(obstacle.position[1]) - float(position[1]),
+                    float(obstacle.position[2]) - float(position[2]),
+                    float(obstacle.radius),
+                )
+            )
+        missing = self._obstacle_observation_slots - len(obstacles)
+        values.extend((0.0, 0.0, 0.0, 0.0) * missing)
+        return tuple(values)
 
     def _minimum_safety_distance_from(self, observation: tuple[float, ...], runtime_info: dict[str, Any]) -> float:
         runtime_value = _float_from_info(runtime_info, "minimum_safety_distance")

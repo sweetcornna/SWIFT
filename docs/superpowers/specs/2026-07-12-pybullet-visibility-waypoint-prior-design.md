@@ -64,18 +64,26 @@ keeps this iteration focused on path selection rather than controller tuning.
 
 ## Configuration And Lineage
 
-Add three fields to `APFConfig` and `PyBulletAPFActionPriorSettings`:
+Add four fields to `APFConfig` and `PyBulletAPFActionPriorSettings`:
 
 - `visibility_planner_enabled: bool = False`
 - `visibility_clearance: float = 0.18`
 - `visibility_samples: int = 16`
+- `policy_residual_scale: float = 1.0`
 
 `visibility_clearance` must be positive and `visibility_samples` must be at
-least eight. YAML parsing, APF conversion, PPO/HCA checkpoint serialization,
+least eight. `policy_residual_scale` must be between zero and one. YAML parsing, APF conversion, PPO/HCA checkpoint serialization,
 and evaluator runtime metadata must preserve the fields. The randomized
 training YAML enables the visibility planner and disables the superseded bypass
-heuristic. Existing checkpoints without the fields remain loadable through
-dataclass defaults.
+heuristic. It uses `policy_residual_scale=0.25` so the learned policy can correct
+the planner without overriding its safety route. Existing checkpoints without
+the fields remain loadable through dataclass defaults.
+
+The final tuned configuration uses `max_steps=1200` because development
+replays showed that 24 of 25 apparently timed-out routes reached the goal in
+779 to 1182 steps without collision. It uses `repulsive_gain=0.002`; higher
+values reintroduced timeouts by pushing the vehicle away from valid visibility
+routes.
 
 ## Testing
 
@@ -106,3 +114,10 @@ selected waypoint, path length, and failure type on development seeds. Any next
 iteration changes one of planner geometry, controller tracking, or policy
 training, never all three together. The final holdout is not used for tuning.
 
+## Execution Result
+
+The completed three-seed run trained seeds 8, 9, and 10 for 150,000 timesteps
+each. The reserved final holdout `2000000..2000099` was evaluated once for each
+checkpoint. The strict gate passed all 10 checks with worst success `0.99`,
+maximum collision `0.0`, maximum timeout `0.01`, and worst average minimum
+safety distance `0.12744620047273952 m`.

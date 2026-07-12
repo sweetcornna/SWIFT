@@ -649,12 +649,22 @@ def test_pybullet_training_env_randomizes_obstacles_from_reset_seed(
     second_observation, second_info = training_env.reset(seed=123)
     training_env.close()
 
-    assert len(first_observation) == 15
-    assert len(second_observation) == 15
+    assert training_env.observation_shape == (19,)
+    assert len(first_observation) == 19
+    assert len(second_observation) == 19
     assert first_info["scenario_seed"] == 123
     assert first_info["obstacle_count"] == 1
     assert first_info["obstacles"] == second_info["obstacles"]
     assert training_env._active_obstacles == first_info["obstacles"]
+    obstacle = first_info["obstacles"][0]
+    assert first_observation[15:19] == pytest.approx(
+        (
+            obstacle.position[0] - first_observation[0],
+            obstacle.position[1] - first_observation[1],
+            obstacle.position[2] - first_observation[2],
+            obstacle.radius,
+        )
+    )
     assert fake_pybullet.multi_bodies[0][1] == fake_pybullet.multi_bodies[1][1]
 
 

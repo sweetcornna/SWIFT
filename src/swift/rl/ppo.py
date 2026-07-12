@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+from swift.rl.apf import APFConfig
 from swift.rl.hca import HCAActorCriticConfig
 
 
@@ -48,9 +49,10 @@ class MLPActorCriticConfig:
     max_heading_delta: float = 0.5
     min_speed_fraction: float = 0.0
     log_std_init: float = -0.5
+    apf_action_prior: APFConfig | None = None
 
     def __post_init__(self) -> None:
-        _set_exact_int(self, "observation_dim", self.observation_dim, 15)
+        _set_observation_dim(self, "observation_dim", self.observation_dim)
         _set_exact_int(self, "action_dim", self.action_dim, 3)
         object.__setattr__(self, "hidden_sizes", tuple(int(size) for size in self.hidden_sizes))
         if not self.hidden_sizes:
@@ -61,6 +63,58 @@ class MLPActorCriticConfig:
         _set_positive_float(self, "max_heading_delta", self.max_heading_delta)
         _set_probability(self, "min_speed_fraction", self.min_speed_fraction)
         _set_finite_float(self, "log_std_init", self.log_std_init)
+        if self.apf_action_prior is not None and not isinstance(self.apf_action_prior, APFConfig):
+            try:
+                if isinstance(self.apf_action_prior, Mapping):
+                    apf_action_prior = APFConfig(**self.apf_action_prior)
+                else:
+                    apf_action_prior = APFConfig(
+                        attractive_gain=self.apf_action_prior.attractive_gain,
+                        repulsive_gain=self.apf_action_prior.repulsive_gain,
+                        influence_radius=self.apf_action_prior.influence_radius,
+                        max_repulsive_magnitude=self.apf_action_prior.max_repulsive_magnitude,
+                        epsilon=self.apf_action_prior.epsilon,
+                        ignore_obstacles_behind=getattr(
+                            self.apf_action_prior,
+                            "ignore_obstacles_behind",
+                            False,
+                        ),
+                        bypass_enabled=getattr(self.apf_action_prior, "bypass_enabled", False),
+                        bypass_lateral_offset=getattr(
+                            self.apf_action_prior,
+                            "bypass_lateral_offset",
+                            0.25,
+                        ),
+                        bypass_forward_margin=getattr(
+                            self.apf_action_prior,
+                            "bypass_forward_margin",
+                            0.08,
+                        ),
+                        bypass_clearance=getattr(self.apf_action_prior, "bypass_clearance", 0.16),
+                        visibility_planner_enabled=getattr(
+                            self.apf_action_prior,
+                            "visibility_planner_enabled",
+                            False,
+                        ),
+                        visibility_clearance=getattr(
+                            self.apf_action_prior,
+                            "visibility_clearance",
+                            0.18,
+                        ),
+                        visibility_samples=getattr(
+                            self.apf_action_prior,
+                            "visibility_samples",
+                            16,
+                        ),
+                        policy_residual_scale=getattr(
+                            self.apf_action_prior,
+                            "policy_residual_scale",
+                            1.0,
+                        ),
+                    )
+            except AttributeError as exc:
+                raise TypeError("apf_action_prior must be an APFConfig") from exc
+            object.__setattr__(self, "apf_action_prior", apf_action_prior)
 
 
 @dataclass(frozen=True)
@@ -93,6 +147,7 @@ class PPOTrainingConfig(PPOConfig):
                     max_heading_delta=self.network.max_heading_delta,
                     min_speed_fraction=self.network.min_speed_fraction,
                     log_std_init=self.network.log_std_init,
+                    apf_action_prior=getattr(self.network, "apf_action_prior", None),
                 )
             except AttributeError as exc:
                 raise TypeError("network must be an MLPActorCriticConfig") from exc
@@ -210,6 +265,13 @@ def _set_exact_int(instance: object, name: str, value: int, expected: int) -> No
     integer_value = int(value)
     if integer_value != expected:
         raise ValueError(f"{name} must be {expected}")
+    object.__setattr__(instance, name, integer_value)
+
+
+def _set_observation_dim(instance: object, name: str, value: int) -> None:
+    integer_value = int(value)
+    if integer_value < 15 or (integer_value - 15) % 4 != 0:
+        raise ValueError(f"{name} must be 15 plus zero or more 4-value obstacle slots")
     object.__setattr__(instance, name, integer_value)
 
 

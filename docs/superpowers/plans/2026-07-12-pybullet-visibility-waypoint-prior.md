@@ -184,3 +184,13 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ro
 
 Expected: strict gate exit `0`, worst success at least `0.95`, collision `0.0`, timeout at most `0.05`, and worst average minimum safety distance at least `0.10 m`.
 
+## Execution Record
+
+Implementation and staged training completed on 2026-07-12. The final artifacts
+are:
+
+- `outputs/training/pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k.json`
+- `outputs/evaluation/pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k_final_holdout.json`
+- `outputs/evaluation/pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k_gate.json`
+
+The final report records `robustness_claim=true` and `passed_gates=10/10`.

@@ -13,15 +13,15 @@ baseline:
   purpose: PyBullet randomized static-obstacle robustness training
 policy:
   max_speed: 1.0
-  max_heading_delta: 0.02
-  min_speed_fraction: 0.4
+  max_heading_delta: 0.2
+  min_speed_fraction: 1.0
   max_climb_rate: 0.0
   obstacle_avoidance_distance: 2.0
   avoidance_heading_delta: 0.4
 environment:
   start: [0.0, 0.0, 0.1125]
   goal: [0.5, 0.0, 0.1125]
-  max_steps: 600
+  max_steps: 1200
   goal_radius: 0.2
   max_speed: 1.0
   max_climb_rate: 0.0
@@ -46,6 +46,22 @@ pybullet_reward:
   timeout_penalty: 20.0
   episode_time_penalty: 1.0
   heading_smoothness_penalty: 0.05
+pybullet_apf_action_prior:
+  enabled: true
+  attractive_gain: 1.0
+  repulsive_gain: 0.002
+  influence_radius: 0.4
+  max_repulsive_magnitude: 10.0
+  epsilon: 0.000001
+  ignore_obstacles_behind: true
+  bypass_enabled: false
+  bypass_lateral_offset: 0.25
+  bypass_forward_margin: 0.08
+  bypass_clearance: 0.16
+  visibility_planner_enabled: true
+  visibility_clearance: 0.18
+  visibility_samples: 16
+  policy_residual_scale: 0.25
 pybullet_curriculum:
   enabled: true
   phases:

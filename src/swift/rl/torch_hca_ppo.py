@@ -12,7 +12,7 @@ from torch.nn import functional as F
 
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceSettings
-from swift.rl.apf import APFConfig
+from swift.rl.apf import APFConfig, apf_features_from_observation
 from swift.rl.hca import HCAActorCriticConfig, HCAObservationAdapterConfig
 from swift.rl.ppo import HCAPPOTrainingConfig, PPOTrainingResult
 from swift.rl.torch_ppo import (
@@ -309,6 +309,12 @@ def _apf_feature_tensor(observations: torch.Tensor, config: APFConfig) -> torch.
     observations = observations.to(dtype=torch.float32)
     if observations.ndim != 2 or observations.shape[1] != 15:
         raise ValueError("observations must have shape (batch, 15)")
+    if config.bypass_enabled or config.ignore_obstacles_behind or config.visibility_planner_enabled:
+        rows = [
+            apf_features_from_observation(row.detach().cpu().tolist(), config).as_tuple()
+            for row in observations
+        ]
+        return torch.tensor(rows, dtype=torch.float32, device=observations.device)
 
     relative_goal = observations[:, 7:10]
     relative_obstacle = observations[:, 10:13]

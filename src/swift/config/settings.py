@@ -12,7 +12,7 @@ import yaml
 from swift.core import ObstacleState
 from swift.envs import SimpleAvoidanceSettings
 from swift.experiments.artifacts import ExperimentArtifactConfig
-from swift.rl import MLPBaselinePolicyConfig, PPOConfig
+from swift.rl import APFConfig, MLPBaselinePolicyConfig, PPOConfig
 
 
 def load_yaml_file(path: str | Path) -> dict[str, Any]:
@@ -221,6 +221,139 @@ class PyBulletRewardSettings:
 
 
 @dataclass(frozen=True)
+class PyBulletAPFActionPriorSettings:
+    enabled: bool = False
+    attractive_gain: float = 1.0
+    repulsive_gain: float = 1.0
+    influence_radius: float = 2.0
+    max_repulsive_magnitude: float = 10.0
+    epsilon: float = 1e-6
+    ignore_obstacles_behind: bool = False
+    bypass_enabled: bool = False
+    bypass_lateral_offset: float = 0.25
+    bypass_forward_margin: float = 0.08
+    bypass_clearance: float = 0.16
+    visibility_planner_enabled: bool = False
+    visibility_clearance: float = 0.18
+    visibility_samples: int = 16
+    policy_residual_scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "enabled", _bool_value("enabled", self.enabled))
+        object.__setattr__(self, "attractive_gain", _non_negative_float("attractive_gain", self.attractive_gain))
+        object.__setattr__(self, "repulsive_gain", _non_negative_float("repulsive_gain", self.repulsive_gain))
+        object.__setattr__(self, "influence_radius", _positive_float("influence_radius", self.influence_radius))
+        object.__setattr__(
+            self,
+            "max_repulsive_magnitude",
+            _positive_float("max_repulsive_magnitude", self.max_repulsive_magnitude),
+        )
+        object.__setattr__(self, "epsilon", _positive_float("epsilon", self.epsilon))
+        object.__setattr__(
+            self,
+            "ignore_obstacles_behind",
+            _bool_value("ignore_obstacles_behind", self.ignore_obstacles_behind),
+        )
+        object.__setattr__(self, "bypass_enabled", _bool_value("bypass_enabled", self.bypass_enabled))
+        object.__setattr__(
+            self,
+            "bypass_lateral_offset",
+            _positive_float("bypass_lateral_offset", self.bypass_lateral_offset),
+        )
+        object.__setattr__(
+            self,
+            "bypass_forward_margin",
+            _non_negative_float("bypass_forward_margin", self.bypass_forward_margin),
+        )
+        object.__setattr__(
+            self,
+            "bypass_clearance",
+            _non_negative_float("bypass_clearance", self.bypass_clearance),
+        )
+        object.__setattr__(
+            self,
+            "visibility_planner_enabled",
+            _bool_value("visibility_planner_enabled", self.visibility_planner_enabled),
+        )
+        object.__setattr__(
+            self,
+            "visibility_clearance",
+            _positive_float("visibility_clearance", self.visibility_clearance),
+        )
+        visibility_samples = _positive_int("visibility_samples", self.visibility_samples)
+        if visibility_samples < 8:
+            raise ValueError("visibility_samples must be at least 8")
+        object.__setattr__(self, "visibility_samples", visibility_samples)
+        object.__setattr__(
+            self,
+            "policy_residual_scale",
+            _unit_interval_float("policy_residual_scale", self.policy_residual_scale),
+        )
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "PyBulletAPFActionPriorSettings":
+        defaults = cls()
+        return cls(
+            enabled=mapping.get("enabled", defaults.enabled),
+            attractive_gain=mapping.get("attractive_gain", defaults.attractive_gain),
+            repulsive_gain=mapping.get("repulsive_gain", defaults.repulsive_gain),
+            influence_radius=mapping.get("influence_radius", defaults.influence_radius),
+            max_repulsive_magnitude=mapping.get(
+                "max_repulsive_magnitude",
+                defaults.max_repulsive_magnitude,
+            ),
+            epsilon=mapping.get("epsilon", defaults.epsilon),
+            ignore_obstacles_behind=mapping.get(
+                "ignore_obstacles_behind",
+                defaults.ignore_obstacles_behind,
+            ),
+            bypass_enabled=mapping.get("bypass_enabled", defaults.bypass_enabled),
+            bypass_lateral_offset=mapping.get(
+                "bypass_lateral_offset",
+                defaults.bypass_lateral_offset,
+            ),
+            bypass_forward_margin=mapping.get(
+                "bypass_forward_margin",
+                defaults.bypass_forward_margin,
+            ),
+            bypass_clearance=mapping.get("bypass_clearance", defaults.bypass_clearance),
+            visibility_planner_enabled=mapping.get(
+                "visibility_planner_enabled",
+                defaults.visibility_planner_enabled,
+            ),
+            visibility_clearance=mapping.get(
+                "visibility_clearance",
+                defaults.visibility_clearance,
+            ),
+            visibility_samples=mapping.get("visibility_samples", defaults.visibility_samples),
+            policy_residual_scale=mapping.get(
+                "policy_residual_scale",
+                defaults.policy_residual_scale,
+            ),
+        )
+
+    def to_apf_config(self) -> APFConfig | None:
+        if not self.enabled:
+            return None
+        return APFConfig(
+            attractive_gain=self.attractive_gain,
+            repulsive_gain=self.repulsive_gain,
+            influence_radius=self.influence_radius,
+            max_repulsive_magnitude=self.max_repulsive_magnitude,
+            epsilon=self.epsilon,
+            ignore_obstacles_behind=self.ignore_obstacles_behind,
+            bypass_enabled=self.bypass_enabled,
+            bypass_lateral_offset=self.bypass_lateral_offset,
+            bypass_forward_margin=self.bypass_forward_margin,
+            bypass_clearance=self.bypass_clearance,
+            visibility_planner_enabled=self.visibility_planner_enabled,
+            visibility_clearance=self.visibility_clearance,
+            visibility_samples=self.visibility_samples,
+            policy_residual_scale=self.policy_residual_scale,
+        )
+
+
+@dataclass(frozen=True)
 class PyBulletCurriculumPhaseSettings:
     name: str
     end_fraction: float
@@ -308,6 +441,9 @@ class TrainingSettings:
         default_factory=PyBulletObstacleRandomizationSettings
     )
     pybullet_reward: PyBulletRewardSettings = field(default_factory=PyBulletRewardSettings)
+    pybullet_apf_action_prior: PyBulletAPFActionPriorSettings = field(
+        default_factory=PyBulletAPFActionPriorSettings
+    )
     pybullet_curriculum: PyBulletCurriculumSettings = field(default_factory=PyBulletCurriculumSettings)
 
     @classmethod
@@ -323,6 +459,9 @@ class TrainingSettings:
                 _mapping_section(mapping, "pybullet_obstacle_randomization")
             ),
             pybullet_reward=PyBulletRewardSettings.from_mapping(_mapping_section(mapping, "pybullet_reward")),
+            pybullet_apf_action_prior=PyBulletAPFActionPriorSettings.from_mapping(
+                _mapping_section(mapping, "pybullet_apf_action_prior")
+            ),
             pybullet_curriculum=PyBulletCurriculumSettings.from_mapping(
                 _mapping_section(mapping, "pybullet_curriculum")
             ),
