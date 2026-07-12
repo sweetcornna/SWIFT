@@ -10,6 +10,7 @@ torch = pytest.importorskip("torch")
 from swift.core import DroneAction
 from swift.config import SimulationSettings
 from swift.envs import PyBulletVelocityTrainingEnv, SimpleAvoidanceEnv, SimpleAvoidanceSettings
+from swift.rl import APFConfig
 from swift.rl.ppo import MLPActorCriticConfig, PPOTrainingConfig
 from swift.rl.torch_ppo import (
     MLPActorCritic,
@@ -31,6 +32,16 @@ def test_actor_critic_outputs_actor_and_value_shapes():
     assert means.shape == (2, config.action_dim)
     assert values.shape == (2,)
     assert model.log_std.shape == (config.action_dim,)
+
+
+def test_actor_critic_accepts_expanded_pybullet_observation_dim():
+    config = MLPActorCriticConfig(observation_dim=27, hidden_sizes=(8,))
+    model = MLPActorCritic(config)
+
+    means, values = model(torch.zeros((2, config.observation_dim), dtype=torch.float32))
+
+    assert means.shape == (2, config.action_dim)
+    assert values.shape == (2,)
 
 
 def test_sample_action_returns_bounded_drone_action_and_training_tensors():
@@ -64,6 +75,127 @@ def test_raw_action_to_drone_action_applies_minimum_speed_fraction():
     assert action.speed == pytest.approx(1.4)
     assert action.heading_delta == pytest.approx(0.0)
     assert action.climb_rate == pytest.approx(0.0)
+
+
+def test_raw_action_to_drone_action_applies_apf_heading_prior_from_observation():
+    settings = SimpleAvoidanceSettings(max_speed=1.0, max_climb_rate=0.0)
+    config = MLPActorCriticConfig(
+        hidden_sizes=(8,),
+        max_heading_delta=0.2,
+        apf_action_prior=APFConfig(repulsive_gain=0.02, influence_radius=0.4),
+    )
+    raw_action = torch.tensor([0.0, 0.0, 0.0])
+
+    clear_path = _pybullet_observation(relative_obstacle=(0.0, 0.0, 0.0), obstacle_radius=0.0)
+    blocked_path = _pybullet_observation(relative_obstacle=(0.13, -0.19, 0.0), obstacle_radius=0.044)
+
+    clear_action = _raw_action_to_drone_action(raw_action, settings, config, clear_path)
+    blocked_action = _raw_action_to_drone_action(raw_action, settings, config, blocked_path)
+
+    assert clear_action.heading_delta == pytest.approx(0.0)
+    assert blocked_action.heading_delta > 0.0
+    assert blocked_action.heading_delta == pytest.approx(config.max_heading_delta)
+
+
+def test_raw_action_to_drone_action_applies_apf_prior_from_expanded_obstacle_slots():
+    settings = SimpleAvoidanceSettings(max_speed=1.0, max_climb_rate=0.0)
+    config = MLPActorCriticConfig(
+        observation_dim=27,
+        hidden_sizes=(8,),
+        max_heading_delta=0.2,
+        apf_action_prior=APFConfig(repulsive_gain=0.02, influence_radius=0.4),
+    )
+    observation = (
+        *_pybullet_observation(relative_obstacle=(0.0, 0.0, 0.0), obstacle_radius=0.0),
+        0.13,
+        -0.19,
+        0.0,
+        0.044,
+        0.3,
+        0.2,
+        0.0,
+        0.04,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
+
+    action = _raw_action_to_drone_action(torch.tensor([0.0, 0.0, 0.0]), settings, config, observation)
+
+    assert action.heading_delta > 0.0
+    assert action.heading_delta == pytest.approx(config.max_heading_delta)
+
+
+def test_raw_action_to_drone_action_applies_bypass_heading_prior():
+    settings = SimpleAvoidanceSettings(max_speed=1.0, max_climb_rate=0.0)
+    config = MLPActorCriticConfig(
+        observation_dim=19,
+        hidden_sizes=(8,),
+        max_heading_delta=0.5,
+        apf_action_prior=APFConfig(
+            repulsive_gain=0.0,
+            bypass_enabled=True,
+            bypass_lateral_offset=0.25,
+            bypass_forward_margin=0.08,
+            bypass_clearance=0.16,
+        ),
+    )
+    observation = (
+        *_pybullet_observation(relative_obstacle=(0.0, 0.0, 0.0), obstacle_radius=0.0),
+        0.20,
+        -0.04,
+        0.0,
+        0.06,
+    )
+
+    action = _raw_action_to_drone_action(torch.tensor([0.0, 0.0, 0.0]), settings, config, observation)
+
+    assert action.heading_delta > 0.0
+    assert action.heading_delta == pytest.approx(config.max_heading_delta)
+
+
+def test_raw_action_to_drone_action_applies_visibility_waypoint_prior():
+    settings = SimpleAvoidanceSettings(max_speed=1.0, max_climb_rate=0.0)
+    config = MLPActorCriticConfig(
+        observation_dim=19,
+        hidden_sizes=(8,),
+        max_heading_delta=0.5,
+        apf_action_prior=APFConfig(
+            repulsive_gain=0.0,
+            visibility_planner_enabled=True,
+            visibility_clearance=0.18,
+            visibility_samples=16,
+        ),
+    )
+    observation = (
+        *_pybullet_observation(relative_obstacle=(0.0, 0.0, 0.0), obstacle_radius=0.0),
+        0.25,
+        0.0,
+        0.0,
+        0.05,
+    )
+
+    action = _raw_action_to_drone_action(torch.tensor([0.0, 0.0, 0.0]), settings, config, observation)
+
+    assert abs(action.heading_delta) > 0.0
+
+
+def test_raw_action_to_drone_action_scales_policy_residual_around_apf_prior():
+    settings = SimpleAvoidanceSettings(max_speed=1.0, max_climb_rate=0.0)
+    config = MLPActorCriticConfig(
+        hidden_sizes=(8,),
+        max_heading_delta=0.5,
+        apf_action_prior=APFConfig(
+            repulsive_gain=0.0,
+            policy_residual_scale=0.25,
+        ),
+    )
+    observation = _pybullet_observation(relative_obstacle=(0.0, 0.0, 0.0), obstacle_radius=0.0)
+
+    action = _raw_action_to_drone_action(torch.tensor([0.0, 1.0, 0.0]), settings, config, observation)
+
+    assert action.heading_delta == pytest.approx(torch.tanh(torch.tensor(1.0)).item() * 0.5 * 0.25)
 
 
 def test_compute_gae_returns_finite_returns_and_advantages():
@@ -308,12 +440,94 @@ def test_load_checkpoint_reconstructs_model_for_deterministic_action(tmp_path: P
     assert -env.settings.max_climb_rate <= action.climb_rate <= env.settings.max_climb_rate
 
 
+def test_load_checkpoint_preserves_mlp_apf_action_prior(tmp_path: Path):
+    def make_env():
+        return SimpleAvoidanceEnv(SimpleAvoidanceSettings(max_steps=8, goal=(4.0, 0.0, 0.0)))
+
+    apf_prior = APFConfig(
+        repulsive_gain=0.02,
+        influence_radius=0.4,
+        ignore_obstacles_behind=True,
+        bypass_enabled=True,
+        bypass_lateral_offset=0.25,
+        bypass_forward_margin=0.08,
+        bypass_clearance=0.16,
+        visibility_planner_enabled=True,
+        visibility_clearance=0.18,
+        visibility_samples=16,
+        policy_residual_scale=0.25,
+    )
+    checkpoint_path = tmp_path / "ppo_apf_prior.ckpt"
+    train_ppo_mlp(
+        make_env,
+        PPOTrainingConfig(
+            total_timesteps=64,
+            rollout_steps=32,
+            minibatch_size=16,
+            update_epochs=1,
+            torch_num_threads=1,
+            seed=123,
+            network=MLPActorCriticConfig(
+                hidden_sizes=(8,),
+                max_heading_delta=0.2,
+                apf_action_prior=apf_prior,
+            ),
+            checkpoint_path=checkpoint_path,
+        ),
+    )
+
+    model, checkpoint = load_ppo_mlp_checkpoint(checkpoint_path)
+    assert checkpoint["network_config"]["apf_action_prior"]["repulsive_gain"] == pytest.approx(0.02)
+    assert checkpoint["network_config"]["apf_action_prior"]["ignore_obstacles_behind"] is True
+    assert checkpoint["network_config"]["apf_action_prior"]["bypass_enabled"] is True
+    assert checkpoint["network_config"]["apf_action_prior"]["bypass_lateral_offset"] == pytest.approx(0.25)
+    assert checkpoint["network_config"]["apf_action_prior"]["visibility_planner_enabled"] is True
+    assert checkpoint["network_config"]["apf_action_prior"]["visibility_clearance"] == pytest.approx(0.18)
+    assert checkpoint["network_config"]["apf_action_prior"]["visibility_samples"] == 16
+    assert checkpoint["network_config"]["apf_action_prior"]["policy_residual_scale"] == pytest.approx(0.25)
+    assert model.config.apf_action_prior == apf_prior
+
+    with torch.no_grad():
+        model.actor_head.weight.zero_()
+        model.actor_head.bias.zero_()
+    action = deterministic_action(
+        model,
+        _pybullet_observation(relative_obstacle=(0.13, -0.19, 0.0), obstacle_radius=0.044),
+        SimpleAvoidanceSettings(max_speed=1.0, max_climb_rate=0.0),
+        model.config,
+    )
+
+    assert action.heading_delta > 0.0
+
+
 def test_load_checkpoint_rejects_wrong_record_type(tmp_path: Path):
     checkpoint_path = tmp_path / "bad.ckpt"
     torch.save({"record_type": "not_ppo_checkpoint"}, checkpoint_path)
 
     with pytest.raises(ValueError, match="ppo_checkpoint"):
         load_ppo_mlp_checkpoint(checkpoint_path)
+
+
+def _pybullet_observation(
+    *,
+    relative_obstacle: tuple[float, float, float],
+    obstacle_radius: float,
+) -> tuple[float, ...]:
+    return (
+        0.0,
+        0.0,
+        0.1125,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        0.0,
+        *relative_obstacle,
+        obstacle_radius,
+        0.5,
+    )
 
 
 class ClosingEnv:

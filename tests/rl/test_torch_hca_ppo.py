@@ -15,6 +15,7 @@ from swift.rl.torch_hca_ppo import (
     HCAActorCritic,
     HCAFeatureExtractor,
     HCAObservationAdapter,
+    _apf_feature_tensor,
     deterministic_hca_action,
     load_ppo_hca_checkpoint,
     sample_hca_action,
@@ -86,6 +87,25 @@ def test_hca_feature_extractor_fuses_apf_without_expanding_observation():
     assert extractor.apf_projection.in_features == 9
     with pytest.raises(ValueError, match="shape"):
         extractor(torch.zeros((1, 24), dtype=torch.float32))
+
+
+def test_hca_apf_feature_tensor_uses_visibility_waypoint_path():
+    observation = torch.tensor(
+        [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.25, 0.0, 0.0, 0.05, 0.5]],
+        dtype=torch.float32,
+    )
+
+    features = _apf_feature_tensor(
+        observation,
+        APFConfig(
+            repulsive_gain=0.0,
+            visibility_planner_enabled=True,
+            visibility_clearance=0.18,
+            visibility_samples=16,
+        ),
+    )
+
+    assert abs(float(features[0, 1])) > 0.0
 
 
 def test_hca_actor_critic_outputs_actor_value_and_log_std_shapes():

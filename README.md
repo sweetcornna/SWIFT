@@ -379,12 +379,11 @@ establish current-contract obstacle avoidance.
 
 ### 10.4 randomized PyBullet robustness training
 
-Current randomized-final status: failed. On 2026-07-11, the corrected
-`max_heading_delta=0.02` no-obstacle diagnostic reached `0.4407` training
-success and `20/20` deterministic development successes, but the 32,768-step
-curriculum pilot reached `0/20` validation successes and `20/20` collisions.
-The 100,000-step candidate, full 3 x 150,000 run, and reserved final holdout
-have not been run and no robustness claim exists.
+Current randomized-final status: passed on 2026-07-12. The final implementation
+uses a 27D observation with up to three sorted obstacle slots, a deterministic
+visibility-graph waypoint prior, and a bounded PPO residual
+(`policy_residual_scale=0.25`). The final 3 x 150,000-step run passed all ten
+strict robustness checks on the reserved `2000000..2000099` holdout range.
 
 随机训练使用四阶段课程：无障碍、单个可选障碍、单个路径阻挡障碍、最终 1–3 个随机障碍。CF2X 的 `0.061 m` 碰撞外廓会参与起点、目标点和路径阻挡判定。
 
@@ -413,12 +412,12 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_mu
 只有 candidate 达到成功率 `>=0.80`、碰撞率 `<=0.05`、超时率 `<=0.20` 才启动完整训练：
 
 ```powershell
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --seeds 8 9 10 --total-timesteps 150000 --output outputs\training\pybullet_curriculum_3x150k.json
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_curriculum_3x150k.json --episodes 100 --holdout-seed 2000000 --output outputs\evaluation\pybullet_curriculum_3x150k_final_holdout.json
-D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_robustness_gate.py --input outputs\evaluation\pybullet_curriculum_3x150k_final_holdout.json --output outputs\evaluation\pybullet_curriculum_3x150k_gate.json --fail-on-reject
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_training.py --seeds 8 9 10 --total-timesteps 150000 --output outputs\training\pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_multi_seed_checkpoint_eval.py --input outputs\training\pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k.json --episodes 100 --holdout-seed 2000000 --output outputs\evaluation\pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k_final_holdout.json
+D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_robustness_gate.py --input outputs\evaluation\pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k_final_holdout.json --output outputs\evaluation\pybullet_curriculum_visibility_h1200_rg0002_r025_3x150k_gate.json --fail-on-reject
 ```
 
-严格门槛保持不变：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。gate 失败仍会写报告，但不形成 robustness claim；仿真鲁棒性也不等于真实飞行安全证据。
+严格门槛保持不变：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。最终结果为最差成功率 `0.99`、最大碰撞率 `0.0`、最大超时率 `0.01`、最差平均最小安全距离 `0.12744620047273952`，并记录 `robustness_claim=true`、`passed_gates=10/10`。gate 失败仍会写报告，但不形成 robustness claim；该结论仅覆盖单无人机、headless、静态障碍 PyBullet 仿真，不等于真实飞行安全证据。
 
 ## 11. 产物在哪里
 

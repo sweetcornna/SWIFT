@@ -88,6 +88,27 @@ class HCAActorCriticConfig:
                     influence_radius=self.apf_config.influence_radius,
                     max_repulsive_magnitude=self.apf_config.max_repulsive_magnitude,
                     epsilon=self.apf_config.epsilon,
+                    ignore_obstacles_behind=getattr(self.apf_config, "ignore_obstacles_behind", False),
+                    bypass_enabled=getattr(self.apf_config, "bypass_enabled", False),
+                    bypass_lateral_offset=getattr(self.apf_config, "bypass_lateral_offset", 0.25),
+                    bypass_forward_margin=getattr(self.apf_config, "bypass_forward_margin", 0.08),
+                    bypass_clearance=getattr(self.apf_config, "bypass_clearance", 0.16),
+                    visibility_planner_enabled=getattr(
+                        self.apf_config,
+                        "visibility_planner_enabled",
+                        False,
+                    ),
+                    visibility_clearance=getattr(
+                        self.apf_config,
+                        "visibility_clearance",
+                        0.18,
+                    ),
+                    visibility_samples=getattr(self.apf_config, "visibility_samples", 16),
+                    policy_residual_scale=getattr(
+                        self.apf_config,
+                        "policy_residual_scale",
+                        1.0,
+                    ),
                 )
             except AttributeError as exc:
                 raise TypeError("apf_config must be an APFConfig") from exc

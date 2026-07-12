@@ -7,7 +7,12 @@ import pytest
 
 pytest.importorskip("torch")
 
-from swift.config import SimulationSettings, TrainingRunSettings, TrainingSettings
+from swift.config import (
+    PyBulletAPFActionPriorSettings,
+    SimulationSettings,
+    TrainingRunSettings,
+    TrainingSettings,
+)
 from swift.envs import SimpleAvoidanceSettings
 from swift.experiments import ExperimentArtifactConfig
 import swift.experiments.pybullet_training_runner as pybullet_training_runner
@@ -16,6 +21,7 @@ from swift.experiments.pybullet_training_runner import (
     run_pybullet_ppo_training,
 )
 from swift.rl import MLPBaselinePolicyConfig
+from swift.rl import APFConfig
 from swift.rl.ppo import PPOConfig, PPOTrainingResult
 
 
@@ -117,6 +123,11 @@ def test_pybullet_ppo_training_respects_yaml_ppo_horizon_and_policy_heading(
     settings = TrainingSettings(
         ppo=PPOConfig(rollout_steps=512, minibatch_size=128, update_epochs=7),
         policy=MLPBaselinePolicyConfig(max_heading_delta=0.2, min_speed_fraction=0.4),
+        pybullet_apf_action_prior=PyBulletAPFActionPriorSettings(
+            enabled=True,
+            repulsive_gain=0.02,
+            influence_radius=0.4,
+        ),
         environment=SimpleAvoidanceSettings(goal=(0.5, 0.0, 0.1125), max_steps=300, max_speed=1.0),
         run=TrainingRunSettings(stage="stage1", variant="ppo_mlp_pybullet_probe", seed=9, total_timesteps=1024),
         artifact=ExperimentArtifactConfig(
@@ -175,6 +186,7 @@ def test_pybullet_ppo_training_respects_yaml_ppo_horizon_and_policy_heading(
     assert ppo_config.update_epochs == 7
     assert ppo_config.network.max_heading_delta == pytest.approx(0.2)
     assert ppo_config.network.min_speed_fraction == pytest.approx(0.4)
+    assert ppo_config.network.apf_action_prior == APFConfig(repulsive_gain=0.02, influence_radius=0.4)
 
 
 def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
@@ -234,6 +246,7 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
 
     def fake_train_ppo_mlp(make_env, config):
         env = make_env()
+        captured["config"] = config
         captured["randomization"] = env._obstacle_randomization
         captured["reward"] = env._reward_settings
         captured["curriculum"] = env._curriculum
@@ -286,12 +299,15 @@ def test_pybullet_ppo_training_records_and_passes_obstacle_randomization(
     assert captured["randomization"] == randomization
     assert captured["reward"] == reward_settings
     assert captured["curriculum"] == curriculum
+    assert captured["config"].network.observation_dim == 27
     assert summary["runtime"]["obstacle_randomization"]["enabled"] is True
+    assert summary["runtime"]["observation_shape"] == [27]
     assert summary["runtime"]["obstacle_randomization"]["min_obstacles"] == 2
     assert summary["runtime"]["obstacle_randomization"]["max_obstacles"] == 3
     assert summary["runtime"]["reward"]["approach_scale"] == pytest.approx(20.0)
     assert summary["runtime"]["curriculum"]["enabled"] is True
     assert summary["runtime"]["curriculum"]["phases"][-1]["name"] == "randomized_final"
+    assert summary["runtime"]["apf_action_prior"]["enabled"] is False
     assert summary["training"]["phase_metrics"][0]["phase"] == "randomized_final"
 
 

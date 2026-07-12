@@ -1,6 +1,7 @@
 import importlib
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,7 @@ def test_training_config_defaults_are_smoke_sized_and_validated():
 
     assert network.observation_dim == 15
     assert network.action_dim == 3
+    assert MLPActorCriticConfig(observation_dim=27).observation_dim == 27
     assert config.total_timesteps == 128
     assert config.rollout_steps == 32
     assert config.minibatch_size == 16
@@ -36,6 +38,33 @@ def test_training_config_defaults_are_smoke_sized_and_validated():
         PPOTrainingConfig(rollout_steps=8, minibatch_size=16)
     with pytest.raises(ValueError, match="observation_dim"):
         MLPActorCriticConfig(observation_dim=14)
+
+
+def test_mlp_config_preserves_visibility_fields_from_compatible_apf_object():
+    from swift.rl.ppo import MLPActorCriticConfig
+
+    prior = SimpleNamespace(
+        attractive_gain=1.0,
+        repulsive_gain=0.02,
+        influence_radius=0.4,
+        max_repulsive_magnitude=10.0,
+        epsilon=1e-6,
+        ignore_obstacles_behind=True,
+        bypass_enabled=False,
+        bypass_lateral_offset=0.25,
+        bypass_forward_margin=0.08,
+        bypass_clearance=0.16,
+        visibility_planner_enabled=True,
+        visibility_clearance=0.18,
+        visibility_samples=16,
+    )
+
+    config = MLPActorCriticConfig(apf_action_prior=prior)
+
+    assert config.apf_action_prior is not None
+    assert config.apf_action_prior.visibility_planner_enabled is True
+    assert config.apf_action_prior.visibility_clearance == pytest.approx(0.18)
+    assert config.apf_action_prior.visibility_samples == 16
 
 
 def test_train_ppo_mlp_raises_domain_error_when_torch_is_unavailable(monkeypatch):

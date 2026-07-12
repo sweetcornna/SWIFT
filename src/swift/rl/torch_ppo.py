@@ -15,6 +15,7 @@ from torch.nn import functional as F
 
 from swift.core import DroneAction
 from swift.envs import SimpleAvoidanceSettings
+from swift.rl.apf import APFConfig, apf_features_from_observation
 from swift.rl.ppo import MLPActorCriticConfig, PPOPhaseMetrics, PPOTrainingConfig, PPOTrainingResult
 
 
@@ -59,7 +60,7 @@ def sample_action(
         value = values[0]
 
     return (
-        _raw_action_to_drone_action(raw_action, settings, network_config),
+        _raw_action_to_drone_action(raw_action, settings, network_config, observation),
         raw_action.detach().cpu(),
         logprob.detach().cpu(),
         value.detach().cpu(),
@@ -76,7 +77,7 @@ def deterministic_action(
     model.eval()
     with torch.no_grad():
         action_means, _ = model(observation_tensor.unsqueeze(0))
-    return _raw_action_to_drone_action(action_means[0].detach().cpu(), settings, network_config)
+    return _raw_action_to_drone_action(action_means[0].detach().cpu(), settings, network_config, observation)
 
 
 def load_ppo_mlp_checkpoint(path: str | Path) -> tuple[MLPActorCritic, dict[str, Any]]:
@@ -417,19 +418,48 @@ def _raw_action_to_drone_action(
     raw_action: torch.Tensor,
     settings: SimpleAvoidanceSettings,
     network_config: MLPActorCriticConfig,
+    observation: Sequence[float] | None = None,
 ) -> DroneAction:
     min_speed_fraction = float(getattr(network_config, "min_speed_fraction", 0.0))
     speed_fraction = min_speed_fraction + torch.sigmoid(raw_action[0]).item() * (1.0 - min_speed_fraction)
+    max_heading_delta = float(network_config.max_heading_delta)
+    heading_delta = float(torch.tanh(raw_action[1]).item() * max_heading_delta)
+    apf_action_prior = getattr(network_config, "apf_action_prior", None)
+    if apf_action_prior is not None and observation is not None:
+        heading_delta = _clamp(
+            _apf_heading_delta(observation, apf_action_prior)
+            + apf_action_prior.policy_residual_scale * heading_delta,
+            -max_heading_delta,
+            max_heading_delta,
+        )
     return DroneAction(
         speed=float(speed_fraction * settings.max_speed),
-        heading_delta=float(torch.tanh(raw_action[1]).item() * network_config.max_heading_delta),
+        heading_delta=heading_delta,
         climb_rate=float(torch.tanh(raw_action[2]).item() * settings.max_climb_rate),
     )
 
 
+def _apf_heading_delta(observation: Sequence[float], config: APFConfig) -> float:
+    values = tuple(float(value) for value in observation)
+    features = apf_features_from_observation(values, config)
+    vector_x, vector_y, _ = features.combined
+    if math.hypot(vector_x, vector_y) <= 1e-12:
+        return 0.0
+    yaw = values[6]
+    return _normalize_angle(math.atan2(vector_y, vector_x) - yaw)
+
+
+def _normalize_angle(value: float) -> float:
+    return (float(value) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return min(max(float(value), lower), upper)
+
+
 def _observation_tensor(observation: Sequence[float]) -> torch.Tensor:
-    if len(observation) != 15:
-        raise ValueError("observation must contain exactly 15 values")
+    if len(observation) < 15 or (len(observation) - 15) % 4 != 0:
+        raise ValueError("observation must contain 15 values plus zero or more 4-value obstacle slots")
     return torch.tensor(tuple(float(value) for value in observation), dtype=torch.float32)
 
 

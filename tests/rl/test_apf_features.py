@@ -69,9 +69,189 @@ def test_apf_features_from_observation_returns_strict_nine_dim_vector():
     assert all(math.isfinite(value) for value in features.as_tuple())
 
 
+def test_apf_features_sum_extended_obstacle_slots_when_present():
+    observation = (
+        *_observation(relative_obstacle=(9.0, 0.0, 0.0), obstacle_radius=0.05),
+        0.2,
+        -0.1,
+        0.0,
+        0.05,
+        0.2,
+        0.1,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
+
+    features = apf_features_from_observation(
+        observation,
+        APFConfig(attractive_gain=0.0, repulsive_gain=0.02, influence_radius=0.4),
+    )
+
+    assert features.repulsive[0] < 0.0
+    assert features.repulsive[1] == pytest.approx(0.0)
+    assert all(math.isfinite(value) for value in features.as_tuple())
+
+
+def test_apf_features_can_ignore_extended_obstacles_that_are_already_behind():
+    observation = (
+        *_observation(
+            relative_goal=(0.1, -0.2, 0.0),
+            relative_obstacle=(0.0, 0.0, 0.0),
+            obstacle_radius=0.0,
+        ),
+        -0.15,
+        -0.27,
+        0.0,
+        0.04,
+    )
+
+    features = apf_features_from_observation(
+        observation,
+        APFConfig(
+            attractive_gain=1.0,
+            repulsive_gain=0.02,
+            influence_radius=0.4,
+            ignore_obstacles_behind=True,
+        ),
+    )
+
+    assert features.repulsive == pytest.approx((0.0, 0.0, 0.0))
+    assert features.combined == pytest.approx(features.attractive)
+
+
+def test_apf_bypass_steers_toward_lateral_waypoint_around_path_blocker():
+    observation = (
+        *_observation(
+            relative_goal=(0.5, 0.0, 0.0),
+            relative_obstacle=(0.0, 0.0, 0.0),
+            obstacle_radius=0.0,
+        ),
+        0.20,
+        -0.04,
+        0.0,
+        0.06,
+    )
+
+    features = apf_features_from_observation(
+        observation,
+        APFConfig(
+            repulsive_gain=0.0,
+            bypass_enabled=True,
+            bypass_lateral_offset=0.25,
+            bypass_forward_margin=0.08,
+            bypass_clearance=0.16,
+        ),
+    )
+
+    assert features.repulsive == pytest.approx((0.0, 0.0, 0.0))
+    assert features.attractive[0] > 0.0
+    assert features.attractive[1] > 0.0
+    assert features.combined == pytest.approx(features.attractive)
+
+
+def test_apf_bypass_returns_to_goal_after_blocker_is_behind():
+    observation = (
+        *_observation(
+            relative_goal=(0.16, 0.0, 0.0),
+            relative_obstacle=(0.0, 0.0, 0.0),
+            obstacle_radius=0.0,
+        ),
+        -0.08,
+        0.0,
+        0.0,
+        0.04,
+    )
+
+    features = apf_features_from_observation(
+        observation,
+        APFConfig(
+            repulsive_gain=0.0,
+            ignore_obstacles_behind=True,
+            bypass_enabled=True,
+            bypass_lateral_offset=0.25,
+            bypass_forward_margin=0.08,
+            bypass_clearance=0.16,
+        ),
+    )
+
+    assert features.attractive == pytest.approx((1.0, 0.0, 0.0))
+    assert features.combined == pytest.approx((1.0, 0.0, 0.0))
+
+
+def test_apf_bypass_selects_side_with_more_obstacle_clearance():
+    observation = (
+        *_observation(
+            relative_goal=(0.5, 0.0, 0.0),
+            relative_obstacle=(0.0, 0.0, 0.0),
+            obstacle_radius=0.0,
+        ),
+        0.20,
+        0.00,
+        0.0,
+        0.05,
+        0.22,
+        0.24,
+        0.0,
+        0.05,
+    )
+
+    features = apf_features_from_observation(
+        observation,
+        APFConfig(
+            repulsive_gain=0.0,
+            bypass_enabled=True,
+            bypass_lateral_offset=0.25,
+            bypass_forward_margin=0.08,
+            bypass_clearance=0.16,
+        ),
+    )
+
+    assert features.attractive[0] > 0.0
+    assert features.attractive[1] < 0.0
+
+
+def test_apf_visibility_planner_uses_collision_free_lateral_attraction_target():
+    observation = (
+        *_observation(
+            relative_goal=(0.5, 0.0, 0.0),
+            relative_obstacle=(0.0, 0.0, 0.0),
+            obstacle_radius=0.0,
+        ),
+        0.25,
+        0.0,
+        0.0,
+        0.05,
+    )
+
+    features = apf_features_from_observation(
+        observation,
+        APFConfig(
+            repulsive_gain=0.0,
+            visibility_planner_enabled=True,
+            visibility_clearance=0.18,
+            visibility_samples=16,
+        ),
+    )
+
+    assert features.repulsive == pytest.approx((0.0, 0.0, 0.0))
+    assert features.attractive[0] > 0.0
+    assert abs(features.attractive[1]) > 0.0
+    assert features.combined == pytest.approx(features.attractive)
+
+
 def test_apf_rejects_invalid_config_and_observation_length():
     with pytest.raises(ValueError, match="influence_radius"):
         APFConfig(influence_radius=0.0)
+    with pytest.raises(ValueError, match="visibility_clearance"):
+        APFConfig(visibility_clearance=0.0)
+    with pytest.raises(ValueError, match="visibility_samples"):
+        APFConfig(visibility_samples=7)
+    with pytest.raises(ValueError, match="policy_residual_scale"):
+        APFConfig(policy_residual_scale=1.01)
     with pytest.raises(ValueError, match="15"):
         apf_features_from_observation((0.0,) * 14)
 
