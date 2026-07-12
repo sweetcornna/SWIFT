@@ -80,3 +80,33 @@ def test_readme_documents_pybullet_curriculum_seed_hygiene_and_gates():
     assert "obsolete pre-accumulated-heading evidence" in text
     assert "Current randomized-final status: passed" in text
     assert "passed_gates=10/10" in text
+
+
+def test_docs_define_robust_hover_boundary_and_curated_publication():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    combined = readme + architecture
+    for required in [
+        "ct_att_yawrate_v1",
+        "heldout_robust_lexicographic_v1",
+        "train_rms_physical12_v1",
+        "artifacts/robust-hover/120k",
+        "manifest.sha256.json",
+        "does not replace or alter SWIFT's",
+    ]:
+        assert required in combined
+    assert "not navigation or real-flight safety evidence" in combined
+    for required in [
+        ".[hover-runtime]",
+        "没有独立托管地址",
+        "scripts/action_profiles.py",
+        "0cdf9fa049ac39152460e7011f61aafffbe51740e9caedb4029d2799da6b41ef",
+        "external/gym-pybullet-drones/gym_pybullet_drones/envs/HoverAviary.py",
+        "351946c80028491f3e8a38da29ff96c6d55181d711629a6927fe2470a21ee0f5",
+        "$modelRoot\\robust_best_model.zip",
+        "$modelRoot\\final_model.zip",
+        "robust_best_model.obsnorm.npz",
+        "final_model.obsnorm.npz",
+        "--dry-run",
+    ]:
+        assert required in readme

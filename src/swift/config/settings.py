@@ -37,10 +37,16 @@ class SimulationSettings:
     command_timeout_seconds: int
 
     @classmethod
-    def from_mapping(cls, mapping: dict[str, Any]) -> "SimulationSettings":
+    def from_mapping(
+        cls, mapping: Mapping[str, Any], *, base_dir: str | Path | None = None
+    ) -> "SimulationSettings":
         pybullet_root = Path(str(mapping["pybullet_root"])).expanduser()
-        raw_pixi = Path(str(mapping["pixi_executable"]))
+        if not pybullet_root.is_absolute() and base_dir is not None:
+            pybullet_root = Path(base_dir).expanduser() / pybullet_root
+        pybullet_root = pybullet_root.resolve()
+        raw_pixi = Path(str(mapping["pixi_executable"])).expanduser()
         pixi_executable = raw_pixi if raw_pixi.is_absolute() else pybullet_root / raw_pixi
+        pixi_executable = pixi_executable.resolve()
 
         raw_required_tasks = mapping.get("required_tasks", ())
         if isinstance(raw_required_tasks, str) or not isinstance(
@@ -68,7 +74,12 @@ class SimulationSettings:
 
 
 def load_simulation_settings(path: str | Path) -> SimulationSettings:
-    return SimulationSettings.from_mapping(load_yaml_file(path))
+    config_path = Path(path).expanduser().resolve()
+    base_dir = next(
+        (parent for parent in (config_path.parent, *config_path.parents) if (parent / "pyproject.toml").is_file()),
+        config_path.parent,
+    )
+    return SimulationSettings.from_mapping(load_yaml_file(config_path), base_dir=base_dir)
 
 
 @dataclass(frozen=True)

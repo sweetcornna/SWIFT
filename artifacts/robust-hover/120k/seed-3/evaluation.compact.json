@@ -1,0 +1,225 @@
+{
+  "acceptance_checks": {
+    "complete_final_windows": true,
+    "horizon_errors": true,
+    "maximum_altitude": true,
+    "non_finite": true,
+    "p95_mae": true,
+    "p95_rmse": true,
+    "p95_std": true,
+    "safety_completion": true,
+    "unsafe": true,
+    "worst_case_mae": true
+  },
+  "acceptance_thresholds": {
+    "complete_final_window_count": 100,
+    "horizon_error_count": 0,
+    "maximum_altitude_m_max": 2.0,
+    "non_finite_count": 0,
+    "p95_mae_m_max": 0.1,
+    "p95_rmse_m_max": 0.12,
+    "p95_std_m_max": 0.08,
+    "safety_completion_count": 100,
+    "unsafe_count": 0,
+    "worst_case_mae_m_max": 0.2
+  },
+  "aggregates": {
+    "final_2s_bias_m": {
+      "maximum": 0.04522685128567572,
+      "mean": 0.016407050009912584,
+      "median": 0.016594024323936307,
+      "minimum": -0.01289627108947089,
+      "p95_nearest_rank": 0.03347959371819709,
+      "std_population": 0.011185520299742117
+    },
+    "final_2s_mae_m": {
+      "maximum": 0.0452268512856758,
+      "mean": 0.0183416792233876,
+      "median": 0.016804954506715875,
+      "minimum": 0.003969642136092161,
+      "p95_nearest_rank": 0.03347959371819705,
+      "std_population": 0.008713509908141208
+    },
+    "final_2s_mean_altitude_m": {
+      "maximum": 1.0452268512856757,
+      "mean": 1.0164070500099125,
+      "median": 1.0165940243239362,
+      "minimum": 0.9871037289105291,
+      "p95_nearest_rank": 1.033479593718197,
+      "std_population": 0.011185520299742117
+    },
+    "final_2s_rmse_m": {
+      "maximum": 0.04637748971706026,
+      "mean": 0.02006730704980565,
+      "median": 0.01853303243896431,
+      "minimum": 0.005562580759728368,
+      "p95_nearest_rank": 0.034981202381697135,
+      "std_population": 0.008620349795717058
+    },
+    "final_2s_std_m": {
+      "maximum": 0.01956882349950235,
+      "mean": 0.008453538486769914,
+      "median": 0.00810550753573381,
+      "minimum": 0.0020550507363958827,
+      "p95_nearest_rank": 0.014667682252258545,
+      "std_population": 0.003352279147189729
+    },
+    "full_return": {
+      "maximum": 479.4081987204919,
+      "mean": 475.9270654453449,
+      "median": 476.3684081728446,
+      "minimum": 471.14113911757795,
+      "p95_nearest_rank": 478.9968936900297,
+      "std_population": 2.255255332195672
+    },
+    "max_altitude_m": {
+      "maximum": 1.062665402698098,
+      "mean": 1.0315626396975335,
+      "median": 1.0312874233433877,
+      "minimum": 0.9968688346725139,
+      "p95_nearest_rank": 1.0505694536078751,
+      "std_population": 0.012177148371374341
+    },
+    "safety_completion": {
+      "count": 100,
+      "rate": 1.0
+    },
+    "target_reached": {
+      "count": 0,
+      "rate": 0.0
+    },
+    "unsafe": {
+      "count": 0,
+      "rate": 0.0
+    }
+  },
+  "case_count": 100,
+  "environment": {
+    "action": "CT_ATT_YAWRATE_V1",
+    "action_shape": [
+      1,
+      4
+    ],
+    "actuator_authority": {
+      "mapping": "HOVER_RPM * (1 + scale * normalized_action)",
+      "profile": "native_0_05",
+      "scale": 0.05
+    },
+    "adapter_source": "D:\\project\\pybullet\\scripts\\evaluation_actuator_authority.py",
+    "base_class": "HoverAviary",
+    "class": "EvaluationActuatorAuthorityHoverAviary",
+    "control_hz": 30,
+    "gui": false,
+    "hover_source": "D:\\project\\pybullet\\external\\gym-pybullet-drones\\gym_pybullet_drones\\envs\\HoverAviary.py",
+    "observation": "KIN",
+    "observation_shape": [
+      1,
+      72
+    ],
+    "physics_hz": 240,
+    "record": false,
+    "vendored_root": "D:\\project\\pybullet\\external\\gym-pybullet-drones"
+  },
+  "evaluation_id": "ct-att-yawrate-v1-120k-seed3-robust-best-r1",
+  "evaluation_seed": 103,
+  "evaluation_valid": true,
+  "harness_validity_checks": {
+    "case_count": true,
+    "case_ids": true,
+    "distinct_states": true,
+    "final_window_counts": true,
+    "finite_archive": true,
+    "full_sampling_contract": true,
+    "model_unchanged": true,
+    "npz_allow_pickle_false": true,
+    "recognized_causes": true,
+    "training_directory_unchanged": true
+  },
+  "model_kind": "robust_best_model",
+  "model_sha256_before": "4fc89140584f29cfb18f930870a629cc83630ec772de4b1845dd9f0718e53f04",
+  "normalization": {
+    "profile": "train_rms_physical12_v1",
+    "stats_basename": "robust_best_model.obsnorm.npz",
+    "stats_sha256_after": "5017351cdef8b920fb2e76d2ff09ebb4ce9ef2ee8f73b6328cf6711abfa800e7",
+    "stats_sha256_before": "5017351cdef8b920fb2e76d2ff09ebb4ce9ef2ee8f73b6328cf6711abfa800e7"
+  },
+  "record_type": "swift_compact_robust_hover_evaluation",
+  "runtime_versions": {
+    "gym_pybullet_drones_declared": "2.1.0",
+    "gymnasium": "1.2.3",
+    "numpy": "1.26.4",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "pybullet": "3.2.5",
+    "python": "3.11.15",
+    "stable_baselines3": "2.8.0",
+    "torch": "2.12.1"
+  },
+  "safety_definition": "finite and no ground contact and |x|,|y|<=1.5 and z<=2.0 and |roll|,|pitch|<=0.4 across initialized and post-step states",
+  "sampling": {
+    "bounds": [
+      [
+        0.05,
+        0.25
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -3.0,
+        3.0
+      ],
+      [
+        -3.0,
+        3.0
+      ]
+    ],
+    "coefficients_a_b": [
+      [
+        1,
+        0
+      ],
+      [
+        3,
+        1
+      ],
+      [
+        7,
+        3
+      ],
+      [
+        9,
+        4
+      ],
+      [
+        11,
+        5
+      ],
+      [
+        13,
+        6
+      ]
+    ],
+    "columns": [
+      "z_m",
+      "x_m",
+      "y_m",
+      "vz_mps",
+      "roll_deg",
+      "pitch_deg"
+    ],
+    "formula": "L + (U-L) * ((a*i+b) mod 100) / 99",
+    "initial_state_sha256_le_float64": "2b005c1f0b4f8e946c23c7d8218d67d35902a0d4e4e788be5bcb2fc111e84951"
+  },
+  "schema_version": 4,
+  "source_training_summary_sha256": "8ae209d96e0f960cc3596fe2011643b41c3592842a2f7f91398d10f7f4327d1d",
+  "verdict": "accepted"
+}

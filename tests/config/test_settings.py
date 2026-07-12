@@ -55,6 +55,44 @@ def test_simulation_settings_resolve_default_paths(tmp_path):
     )
 
 
+def test_simulation_settings_resolves_relative_root_from_config_repository(tmp_path, monkeypatch):
+    repo = tmp_path / "swift"
+    config_dir = repo / "configs"
+    config_dir.mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("[project]\nname='test'\nversion='0'\n", encoding="utf-8")
+    config_path = config_dir / "simulation.yaml"
+    config_path.write_text(
+        "\n".join([
+            "pybullet_root: ../pybullet",
+            "pixi_executable: .tools/pixi/pixi.exe",
+            "required_tasks: [test]",
+            "check_task: test",
+            "smoke_task: drone-demo",
+            "command_timeout_seconds: 120",
+        ]),
+        encoding="utf-8",
+    )
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    settings = load_simulation_settings(config_path)
+
+    assert settings.pybullet_root == (tmp_path / "pybullet").resolve()
+    assert settings.pixi_executable == (tmp_path / "pybullet/.tools/pixi/pixi.exe").resolve()
+
+
+def test_simulation_settings_from_mapping_preserves_caller_relative_root_resolution(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    settings = SimulationSettings.from_mapping({
+        "pybullet_root": "pybullet",
+        "pixi_executable": "pixi.exe",
+        "required_tasks": ["test"],
+    })
+    assert settings.pybullet_root == (tmp_path / "pybullet").resolve()
+    assert settings.pixi_executable == (tmp_path / "pybullet/pixi.exe").resolve()
+
+
 def test_simulation_settings_require_tasks(tmp_path):
     config_path = tmp_path / "simulation.yaml"
     config_path.write_text(

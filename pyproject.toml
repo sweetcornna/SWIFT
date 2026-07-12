@@ -18,11 +18,19 @@ dev = [
 ]
 train = [
   "numpy>=1.26,<3",
+  "scipy>=1.11,<2",
   "torch>=2.12,<3",
 ]
 sim = [
   "gymnasium>=1.2,<2",
   "numpy>=1.26,<3",
+  "pybullet>=3.2,<4; python_version < '3.14'",
+]
+hover-runtime = [
+  "stable-baselines3>=2.8,<3",
+  "gymnasium>=1.2,<2",
+  "numpy>=1.26,<3",
+  "torch>=2.12,<3",
   "pybullet>=3.2,<4; python_version < '3.14'",
 ]
 

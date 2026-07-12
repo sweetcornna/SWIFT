@@ -46,8 +46,12 @@ Windows 新电脑推荐直接运行 PowerShell bootstrap：
 需要 PyBullet 联合部署：
 
 ```powershell
+python -m pip install -e ".[dev,hover-runtime]"
 .\scripts\bootstrap.ps1 -Mode pybullet -PyBulletRoot D:\project\pybullet -PyBulletVenv D:\project\.venvs\swift-pybullet-pixi
 ```
+
+`hover-runtime` 安装 Stable-Baselines3、Gymnasium、NumPy、Torch 和受支持
+Python 版本上的 PyBullet；它**不包含**下文要求的外部 hover substrate 源码。
 
 这个命令会使用 PyBullet Pixi Python 创建联合 venv，安装 SWIFT、Torch、PyYAML，并运行 PyBullet check-only 与 runtime smoke。
 
@@ -170,13 +174,16 @@ python -m pip install -e ".[dev]"
 python -m pip install -e ".[dev,train]"
 ```
 
-尝试直接安装 PyBullet runtime 依赖：
+安装 stabilized-hover runtime 依赖：
 
 ```powershell
-python -m pip install -e ".[dev,train,sim]"
+python -m pip install -e ".[dev,hover-runtime]"
 ```
 
-注意：如果当前 Python 版本没有可用的 `pybullet` wheel，`.[sim]` 可能失败。Windows 上推荐使用第 8 节的 Pixi PyBullet venv 方案。
+通用 simulation extra 仍可用 `python -m pip install -e ".[dev,train,sim]"`。
+注意：如果当前 Python 版本没有可用的 `pybullet` wheel，包含 PyBullet 的 extra 可能失败。
+Windows 上推荐使用第 8 节的 Pixi PyBullet venv 方案。任何 extra 都只安装 Python
+依赖，不会安装或下载第 10.5 节的兼容外部 substrate。
 
 ## 6. 项目健康检查
 
@@ -419,6 +426,142 @@ D:\project\.venvs\swift-pybullet-pixi\Scripts\python.exe scripts\run_pybullet_ro
 
 严格门槛保持不变：最差成功率不低于 `0.95`、最大碰撞率等于 `0`、最大超时率不高于 `0.05`、最差平均最小安全距离不低于 `0.10`。最终结果为最差成功率 `0.99`、最大碰撞率 `0.0`、最大超时率 `0.01`、最差平均最小安全距离 `0.12744620047273952`，并记录 `robustness_claim=true`、`passed_gates=10/10`。gate 失败仍会写报告，但不形成 robustness claim；该结论仅覆盖单无人机、headless、静态障碍 PyBullet 仿真，不等于真实飞行安全证据。
 
+## 10.5 SWIFT-native robust hover 集成
+
+此入口是独立的 stabilized-hover 能力，不修改第 10.4 节的 SWIFT
+navigation、累计航向、障碍课程或 APF/HCA 行为。SWIFT 拥有配置、动作契约、
+哈希绑定和发布逻辑；外部 PyBullet 仿真/训练底座不会被复制进本仓库。
+该本地 substrate **没有独立托管地址**，本项目不提供也不暗示下载 URL；必须指向你已有的
+兼容本地 checkout。默认 `configs/simulation.yaml` 假定它位于本仓库的相邻
+`../pybullet` 目录。`pybullet_root` 相对路径从 simulation config 所在仓库解析，
+`pixi_executable` 相对路径再从 `pybullet_root` 解析，因此命令不依赖 process CWD。
+其他布局可复制配置并修改路径，例如：
+
+```yaml
+pybullet_root: D:/local/compatible-pybullet
+pixi_executable: .tools/pixi/pixi.exe
+required_tasks: [test, drone-demo]
+check_task: test
+smoke_task: drone-demo
+command_timeout_seconds: 120
+```
+
+然后在所有 hover CLI 上传入 `--simulation-config D:\path\to\simulation.yaml`。
+
+默认科学配置位于 `configs/pybullet_hover.yaml`：
+
+- `ct_att_yawrate_v1`：collective thrust + roll/pitch attitude + yaw rate；
+- `(1,72)` observation / `(1,4)` action，30 Hz 控制、240 Hz physics；
+- `robust_uniform_v1` reset、`hover_kin_safe_v1` reward；
+- 只更新前 12 个物理 observation 的 `train_rms_physical12_v1`；
+- 固定 100-case held-out bank，按 safety completion、p95 altitude MAE、return
+  做 lexicographic robust checkpoint selection。
+
+兼容 substrate 的精确文件/哈希契约如下（来源为发布的每个 seed 的
+`source_hashes.json` 与 `action_profile.json` metadata；三个 seed 一致）：
+
+| 相对 `pybullet_root` 的文件 | SHA-256 |
+| --- | --- |
+| `scripts/action_profiles.py` | `0cdf9fa049ac39152460e7011f61aafffbe51740e9caedb4029d2799da6b41ef` |
+| `scripts/training_initial_states.py` | `112cb5cc2f418acb6f12c75cce02430b1a397b9bde180b49b6aa6009eb5ef043` |
+| `scripts/training_reward.py` | `55cd5ea4d9fb9baaf446689485af903250079d4bd587d7b813f6d2f769733f02` |
+| `scripts/observation_normalization.py` | `5545509044bcab732d3931367009665f9611bf067e7bd091396db046eea20248` |
+| `scripts/robust_validation.py` | `e3176c1ffe3e08e6cd57cdc5cfa4c4f648b3e185c92865bb93f628c5011bf954` |
+| `scripts/train_drone_ppo.py` | `70f4673f60020a27fdc04f354b787f274cf85484a840be9d1ef70287c6056a25` |
+| `scripts/evaluate_drone_ppo.py` | `fc330d22d1211e4f332f7e0509c351440321834b860f4162dac20377d68c791a` |
+| `external/gym-pybullet-drones/gym_pybullet_drones/envs/HoverAviary.py` | `351946c80028491f3e8a38da29ff96c6d55181d711629a6927fe2470a21ee0f5` |
+| `external/gym-pybullet-drones/gym_pybullet_drones/envs/BaseAviary.py` | `97ddebe6ddb702a8eb4631a47552869ddc3d4d8f144aedc304166d98a948eb17` |
+
+还必须存在可导入的 `ppo_viz/` 和配置中的 Pixi executable。发布 metadata 的动作契约
+为 `(1,4)` float32 `ct_att_yawrate_v1`（collective、desired roll、desired pitch、
+desired Euler yaw rate），observation 为 `(1,72)`。可用 PowerShell 检查本地文件：
+
+```powershell
+Get-FileHash D:\local\compatible-pybullet\scripts\action_profiles.py -Algorithm SHA256
+Get-FileHash D:\local\compatible-pybullet\external\gym-pybullet-drones\gym_pybullet_drones\envs\HoverAviary.py -Algorithm SHA256
+```
+
+先安装 runtime 并做不启动训练的契约检查：
+
+```powershell
+python -m pip install -e ".[hover-runtime]"
+python scripts\run_pybullet_hover_training.py --simulation-config configs\simulation.yaml --dry-run
+python scripts\run_pybullet_hover_training.py --help
+python scripts\run_pybullet_hover_eval.py --help
+python scripts\run_pybullet_hover_viz.py --help
+```
+
+`--dry-run` 只跳过训练/评估进程；它仍验证外部 substrate 的必需源码文件，不能在没有
+兼容 checkout 时作为成功的离线 config-only check。training dry-run 不要求 Pixi
+executable 可运行，但非 dry-run 会要求它。
+
+训练、只读评估和后处理可视化：
+
+```powershell
+python scripts\run_pybullet_hover_training.py --run-name swift-hover-seed1 --timeout 21600
+python scripts\run_pybullet_hover_eval.py --model <run>\robust_best_model.zip --output <new-eval-dir> --evaluation-seed 101 --cases 100 --timeout 3600
+python scripts\run_pybullet_hover_viz.py --input <eval-dir> --output <new-viz-dir> --html --timeout 600
+```
+
+训练 summary schema 5 将每个 `best`、`robust_best`、`final` ZIP 与精确
+`.obsnorm.npz` sidecar 通过 SHA-256 绑定。评估拒绝未绑定或被修改的模型，并检查
+输入训练目录在运行前后完全不变。
+
+### 120k 三种子已训练模型
+
+`artifacts/robust-hover/120k/` 发布 seeds 1–3 的 120,000 requested-step
+`robust_best_model.zip` 和 `final_model.zip`、各自精确 normalization sidecar、
+`action_profile.json`、`source_hashes.json`、`summary.json`、compact evaluation
+JSON 和 `manifest.sha256.json`。不复制 `evaluation.npz`、训练 callback NPZ、
+validation bank、trajectory bulk 或整个 PyBullet substrate。
+
+三个 120k run 的实际 PPO timesteps 都是 120,832；robust-best 选择点分别是
+seed 1: 110k、seed 2: 100k、seed 3: 110k。独立 100-case evaluations 均为
+`accepted`，但证据范围仅为 single-drone、headless PyBullet stabilized hover，
+不是导航能力或真实飞行安全证明。
+
+直接评估发布模型（`N` 为 1、2 或 3）：
+
+```powershell
+$seed = 1
+$modelRoot = "artifacts\robust-hover\120k\seed-$seed"
+python scripts\run_pybullet_hover_eval.py `
+  --simulation-config configs\simulation.yaml `
+  --model "$modelRoot\robust_best_model.zip" `
+  --output "outputs\pybullet_hover\evaluation\seed-$seed-robust-best" `
+  --evaluation-seed 101 --cases 100
+python scripts\run_pybullet_hover_eval.py `
+  --simulation-config configs\simulation.yaml `
+  --model "$modelRoot\final_model.zip" `
+  --output "outputs\pybullet_hover\evaluation\seed-$seed-final" `
+  --evaluation-seed 101 --cases 100
+```
+
+模型不能脱离同目录 sidecar 使用：`robust_best_model.zip` 必须配套
+`robust_best_model.obsnorm.npz`，`final_model.zip` 必须配套
+`final_model.obsnorm.npz`；`summary.json` 提供精确 model/stats SHA-256 绑定，
+`action_profile.json` 与 `source_hashes.json` 提供动作和 substrate 源码契约。
+缺少、重命名或修改任一绑定文件都会在启动外部评估前失败。可先检查而不运行评估：
+
+```powershell
+python scripts\run_pybullet_hover_eval.py `
+  --simulation-config configs\simulation.yaml `
+  --model artifacts\robust-hover\120k\seed-1\robust_best_model.zip `
+  --output outputs\unused --dry-run
+```
+
+可从本地已验证底座重新生成 curated bundle：
+
+```powershell
+python scripts\publish_pybullet_hover_models.py `
+  --training-run ..\pybullet\results\ppo\ppo-hover-ct-att-yawrate-v1-120k-seed1-r1 `
+  --training-run ..\pybullet\results\ppo\ppo-hover-ct-att-yawrate-v1-120k-seed2-r1 `
+  --training-run ..\pybullet\results\ppo\ppo-hover-ct-att-yawrate-v1-120k-seed3-r1 `
+  --evaluation ..\pybullet\results\ppo-evaluation\ct-att-yawrate-v1-120k-seed1-robust-best-r1 `
+  --evaluation ..\pybullet\results\ppo-evaluation\ct-att-yawrate-v1-120k-seed2-robust-best-r1 `
+  --evaluation ..\pybullet\results\ppo-evaluation\ct-att-yawrate-v1-120k-seed3-robust-best-r1
+```
+
 ## 11. 产物在哪里
 
 运行脚本会生成：
@@ -458,6 +601,7 @@ PyBullet checkpoint 评估报告：
 | 文件 | 用途 |
 | --- | --- |
 | [configs/simulation.yaml](configs/simulation.yaml) | 本地 PyBullet 底座路径和 Pixi 任务 |
+| [configs/pybullet_hover.yaml](configs/pybullet_hover.yaml) | stabilized-hover 训练、normalization 和 robust selection 契约 |
 | [configs/training.yaml](configs/training.yaml) | repo-native 默认训练配置 |
 | [configs/training_pybullet_probe.yaml](configs/training_pybullet_probe.yaml) | PyBullet no-obstacle 可达速度控制训练 |
 | [configs/training_pybullet_obstacles.yaml](configs/training_pybullet_obstacles.yaml) | PyBullet 显式 SWIFT obstacle 训练 |
