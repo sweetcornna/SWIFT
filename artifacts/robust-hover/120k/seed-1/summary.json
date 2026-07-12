@@ -1,0 +1,487 @@
+{
+  "schema_version": 5,
+  "run_id": "20260712T164012945546Z",
+  "run_name": "ppo-hover-ct-att-yawrate-v1-120k-seed1-r1",
+  "started_at_utc": "2026-07-12T16:40:12.945546Z",
+  "environment": {
+    "name": "HoverAviary",
+    "observation": "kin",
+    "action": "ct_att_yawrate_v1",
+    "observation_shape": [
+      1,
+      72
+    ],
+    "action_shape": [
+      1,
+      4
+    ]
+  },
+  "algorithm": {
+    "name": "PPO",
+    "policy": "MlpPolicy",
+    "n_steps": 1024,
+    "batch_size": 64
+  },
+  "training": {
+    "requested_timesteps": 120000,
+    "actual_timesteps": 120832,
+    "train_seed": 1,
+    "training_reset_seed": 100001,
+    "eval_seed": 200001,
+    "nominal_eval_seed": 300001,
+    "robust_evaluation_seed": 101,
+    "requested_device": "cpu",
+    "effective_device": "cpu"
+  },
+  "evaluation": {
+    "frequency": 10000,
+    "episodes": 20,
+    "callback_count": 12,
+    "last_callback_timestep": 120000,
+    "final_mean_reward": 364.03815099999997,
+    "final_std_reward": 5.684341886080802e-14,
+    "reward_profile": "hover_kin_safe_v1",
+    "scope": "fixed-nominal model selection and final nominal evaluation"
+  },
+  "reward_profile": {
+    "name": "hover_kin_safe_v1",
+    "version": 2,
+    "training_only": true,
+    "formula": "clip(2*(1-q_p-0.8*q_v-0.2*q_att-0.1*q_omega-0.05*q_u),-2,2); q_p=clip(sum(((position-[0,0,1])/[1.5,1.5,1.0])^2),0,1); q_v=clip(sum((linear_velocity/0.75)^2),0,1); q_att=clip((roll/0.4)^2+(pitch/0.4)^2,0,1); q_omega=clip(sum((angular_velocity/4.0)^2),0,1); q_u=clip(mean(clip(normalized_RPM_action,-1,1)^2),0,1); unsafe post-step state replaces reward with -20 and terminates",
+    "state_layout": {
+      "position": [
+        0,
+        3
+      ],
+      "roll_pitch": [
+        7,
+        9
+      ],
+      "linear_velocity": [
+        10,
+        13
+      ],
+      "angular_velocity": [
+        13,
+        16
+      ]
+    },
+    "scales": {
+      "position_m": [
+        1.5,
+        1.5,
+        1.0
+      ],
+      "linear_velocity_mps": 0.75,
+      "attitude_rad": 0.4,
+      "angular_velocity_radps": 4.0,
+      "normalized_rpm_action": 1.0
+    },
+    "weights": {
+      "position": 1.0,
+      "velocity": 0.8,
+      "attitude": 0.2,
+      "angular_velocity": 0.1,
+      "control_effort": 0.05
+    },
+    "outer_scale": 2.0,
+    "dense_bounds": [
+      -2.0,
+      2.0
+    ],
+    "unsafe_terminal_penalty": -20.0,
+    "unsafe_bootstrap": false,
+    "unsafe_definition": "non-finite state or PyBullet ground contact or |x|>1.5 or |y|>1.5 or z>2.0 or |roll|>0.4 or |pitch|>0.4",
+    "terminal_semantics": "unsafe reward replaces dense reward and returns terminated=True,truncated=False regardless of native flags; safe native target termination and time-limit truncation retain dense reward and native flags",
+    "survival_incentive_guard": "no positive constant survival term: stationary floor/ceiling reward is zero; motion, attitude, angular velocity, and control effort can only reduce it"
+  },
+  "checkpoint_selection": {
+    "name": "heldout_robust_lexicographic_v1",
+    "frequency": 10000,
+    "case_count": 100,
+    "deterministic": true,
+    "score_fields": [
+      "safety_completion_count:max",
+      "p95_final_2s_mae_m:min",
+      "mean_shaped_return:max"
+    ],
+    "tie_policy": "earliest",
+    "best_timestep": 110000,
+    "best_score": [
+      100,
+      -0.05457388228168205,
+      370.3442994824168
+    ],
+    "callback_count": 12,
+    "bank": {
+      "name": "heldout_robust_validation_v1",
+      "shape": [
+        100,
+        6
+      ],
+      "dtype": "float64",
+      "columns": [
+        "z_m",
+        "x_m",
+        "y_m",
+        "vz_mps",
+        "roll_deg",
+        "pitch_deg"
+      ],
+      "bounds": [
+        [
+          0.05,
+          0.25
+        ],
+        [
+          -0.1,
+          0.1
+        ],
+        [
+          -0.1,
+          0.1
+        ],
+        [
+          -0.1,
+          0.1
+        ],
+        [
+          -3.0,
+          3.0
+        ],
+        [
+          -3.0,
+          3.0
+        ]
+      ],
+      "coefficients_a_b": [
+        [
+          17,
+          8
+        ],
+        [
+          19,
+          9
+        ],
+        [
+          23,
+          11
+        ],
+        [
+          29,
+          14
+        ],
+        [
+          31,
+          15
+        ],
+        [
+          37,
+          18
+        ]
+      ],
+      "formula": "L + (U-L) * (((a*i+b) mod 100)+0.5) / 100",
+      "reset_seed_namespace": "400000 + case_id",
+      "expected_sha256_le_float64": "9412c6baf9a61d0085adfa56a882389158bd2d81683eab9e53e17bc9dc0725b0",
+      "observed_sha256_le_float64": "9412c6baf9a61d0085adfa56a882389158bd2d81683eab9e53e17bc9dc0725b0",
+      "external_bank_contract": "not imported or consulted by training"
+    }
+  },
+  "initial_state_distribution": {
+    "name": "robust_uniform_v1",
+    "schema_version": 1,
+    "columns": [
+      "z_m",
+      "x_m",
+      "y_m",
+      "vz_mps",
+      "roll_deg",
+      "pitch_deg"
+    ],
+    "bounds": [
+      [
+        0.05,
+        0.25
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -3.0,
+        3.0
+      ],
+      [
+        -3.0,
+        3.0
+      ]
+    ],
+    "units": [
+      "m",
+      "m",
+      "m",
+      "m/s",
+      "degree",
+      "degree"
+    ],
+    "joint_distribution": "continuous product-uniform over the listed closed bounds",
+    "independence_assumption": "all six sampled components are mutually independent",
+    "fixed_components": {
+      "yaw_deg": 0.0,
+      "vx_mps": 0.0,
+      "vy_mps": 0.0,
+      "angular_velocity_radps": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "reset_sampler_version": "product_uniform_numpy_generator_v1",
+    "reset_seed": 100001,
+    "rng_algorithm": "PCG64",
+    "draw_dtype": "float64",
+    "angle_conversion": "numpy.deg2rad(float64) before URDF reload",
+    "velocity_application_stage": "after native reset and before kinematic refresh/observation",
+    "realization_tolerance": 1e-09,
+    "draw_count": 812,
+    "draws_sha256_le_float64": "53a9f44f5091ff07d2dd2363e9c7c92ee52f12e7d79235b2b8fb633b62451bfa"
+  },
+  "validation_initial_states": {
+    "seed": 200001,
+    "case_count": 100,
+    "sampling_method": "pre_generated_product_uniform_numpy_generator_v1",
+    "bounds": [
+      [
+        0.05,
+        0.25
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -0.1,
+        0.1
+      ],
+      [
+        -3.0,
+        3.0
+      ],
+      [
+        -3.0,
+        3.0
+      ]
+    ],
+    "states_sha256_le_float64": "5415507b862e4e9771e320e082a7e9c090f24178038eb9da5a4a6d64c141dbb5",
+    "use": "provenance-only independent bank; callback selection remains fixed nominal"
+  },
+  "observation_normalization": {
+    "name": "train_rms_physical12_v1",
+    "schema_version": 1,
+    "normalized_slice": [
+      0,
+      12
+    ],
+    "action_history_slice": [
+      12,
+      72
+    ],
+    "action_history_mode": "identity",
+    "epsilon": 1e-08,
+    "clip_obs": 10.0,
+    "reward_normalization": false,
+    "update_source": "training_only",
+    "validation_updates": false,
+    "checkpoint_stats": {
+      "best_model": "best_model.obsnorm.npz",
+      "robust_best_model": "robust_best_model.obsnorm.npz",
+      "final_model": "final_model.obsnorm.npz"
+    }
+  },
+  "model_normalization_bindings": {
+    "best_model": {
+      "model": "best_model.zip",
+      "stats": "best_model.obsnorm.npz",
+      "checkpoint_timestep": 120000,
+      "model_sha256": "c1a93adcaea474987414dd975d658fa864ae0ceec52376d0b177e7dac35fa1df",
+      "stats_sha256": "f6a0a015a9d87c5f71731e07218157a44cf09729b847f93aef7c32a608ad9bde"
+    },
+    "robust_best_model": {
+      "model": "robust_best_model.zip",
+      "stats": "robust_best_model.obsnorm.npz",
+      "checkpoint_timestep": 110000,
+      "model_sha256": "91ac7445fd0fde6485e5ed7782ce54b2c8c0c45e44afdd666064a31f134d8065",
+      "stats_sha256": "c71d65683302157a6d778e4ee65e3fb012d12f879f0ef6d05b658841e7808fdb"
+    },
+    "final_model": {
+      "model": "final_model.zip",
+      "stats": "final_model.obsnorm.npz",
+      "checkpoint_timestep": 120832,
+      "model_sha256": "9d1be43f5ea1ceda49f4eb7dc58ae5d20d66066efe9c8989e886bd8c993b0741",
+      "stats_sha256": "61581da5720120efa29b250c66d721d32a2a460a43d62fc5d00fa3b527e56161"
+    }
+  },
+  "experiment": {
+    "factor_name": "action_interface",
+    "control_level": "normalized_per_motor_rpm_v1",
+    "factor_level": "ct_att_yawrate_v1",
+    "prior_terminal_fix_classification": "correctness_only_no_performance_credit",
+    "control_run_id": "ppo-hover-ct-att-yawrate-v1-100k-seed1-r1",
+    "pairing_seed": 1,
+    "preregistered_metrics": [
+      "robust_safety_completion_count",
+      "xy_violation_count",
+      "ceiling_violation_count",
+      "tilt_violation_count",
+      "ground_contact_count",
+      "multiple_violation_count",
+      "p95_altitude_mae",
+      "worst_case_altitude_mae",
+      "p95_rmse",
+      "p95_altitude_std",
+      "maximum_altitude",
+      "episode_length",
+      "episode_return",
+      "nominal_safety",
+      "nominal_reward"
+    ]
+  },
+  "action_profile": {
+    "name": "ct_att_yawrate_v1",
+    "schema_version": 1,
+    "policy_action": [
+      "collective",
+      "desired_roll",
+      "desired_pitch",
+      "desired_euler_yaw_rate"
+    ],
+    "shape": [
+      1,
+      4
+    ],
+    "dtype": "float32",
+    "bounds": [
+      -1.0,
+      1.0
+    ],
+    "mapping": {
+      "total_thrust_N": "m*g*(1+0.5*a0)",
+      "roll_rad": "0.25*a1",
+      "pitch_rad": "0.25*a2",
+      "yaw_rate_rad_s": "2*a3"
+    },
+    "controller": {
+      "family": "root_owned_transactional_dslpid_attitude_equivalent",
+      "mixer": "CF2X",
+      "kp": [
+        70000.0,
+        70000.0,
+        60000.0
+      ],
+      "ki": [
+        0.0,
+        0.0,
+        500.0
+      ],
+      "kd": [
+        20000.0,
+        20000.0,
+        12000.0
+      ],
+      "torque_clip": [
+        -3200.0,
+        3200.0
+      ],
+      "integral_clips": [
+        1.0,
+        1.0,
+        1500.0
+      ],
+      "pwm_clip": [
+        20000.0,
+        65535.0
+      ],
+      "rpm_formula": "0.2685*PWM+4070.3",
+      "yaw_delta": "atan2(sin(delta),cos(delta))",
+      "evaluation_frequency_hz": 30,
+      "physics_hold_substeps": 8,
+      "commit": "only_after_finite_output"
+    },
+    "reset": "after_all_physical_randomization_clear_counters_integrals_history_diagnostics_and_seed_last_rpy_from_realized_state",
+    "observation": {
+      "shape": [
+        1,
+        72
+      ],
+      "physical": [
+        0,
+        12
+      ],
+      "high_level_action_history": [
+        12,
+        72
+      ],
+      "generated_rpm_excluded": true
+    }
+  },
+  "source": {
+    "code_revision": null,
+    "dirty_worktree": null,
+    "training_script_sha256": "70f4673f60020a27fdc04f354b787f274cf85484a840be9d1ef70287c6056a25",
+    "reset_wrapper_sha256": "112cb5cc2f418acb6f12c75cce02430b1a397b9bde180b49b6aa6009eb5ef043",
+    "reward_wrapper_sha256": "55cd5ea4d9fb9baaf446689485af903250079d4bd587d7b813f6d2f769733f02",
+    "robust_validation_sha256": "e3176c1ffe3e08e6cd57cdc5cfa4c4f648b3e185c92865bb93f628c5011bf954",
+    "observation_normalization_sha256": "5545509044bcab732d3931367009665f9611bf067e7bd091396db046eea20248",
+    "action_profile_sha256": "0cdf9fa049ac39152460e7011f61aafffbe51740e9caedb4029d2799da6b41ef",
+    "hover_aviary_sha256": "351946c80028491f3e8a38da29ff96c6d55181d711629a6927fe2470a21ee0f5",
+    "base_aviary_sha256": "97ddebe6ddb702a8eb4631a47552869ddc3d4d8f144aedc304166d98a948eb17"
+  },
+  "versions": {
+    "python": "3.11.15",
+    "numpy": "1.26.4",
+    "torch": "2.12.1",
+    "stable_baselines3": "2.8.0",
+    "gymnasium": "1.2.3",
+    "pybullet": "3.2.5",
+    "gym_pybullet_drones_declared": "2.1.0"
+  },
+  "artifacts": {
+    "best_model": "best_model.zip",
+    "final_model": "final_model.zip",
+    "evaluations": "evaluations.npz",
+    "summary": "summary.json",
+    "best_model_stats": "best_model.obsnorm.npz",
+    "robust_best_model_stats": "robust_best_model.obsnorm.npz",
+    "final_model_stats": "final_model.obsnorm.npz",
+    "robust_best_model": "robust_best_model.zip",
+    "robust_evaluations": "robust_evaluations.npz",
+    "validation_bank": "validation_bank.npz",
+    "action_profile": "action_profile.json",
+    "source_hashes": "source_hashes.json",
+    "sha256": {
+      "best_model": "c1a93adcaea474987414dd975d658fa864ae0ceec52376d0b177e7dac35fa1df",
+      "final_model": "9d1be43f5ea1ceda49f4eb7dc58ae5d20d66066efe9c8989e886bd8c993b0741",
+      "evaluations": "02a100ece5f0ca3ad018a57a916de2c1f00a629c8e022779f3b1c29410dc2486",
+      "robust_best_model": "91ac7445fd0fde6485e5ed7782ce54b2c8c0c45e44afdd666064a31f134d8065",
+      "robust_evaluations": "30d83025bb82ef29c7a56f1eb4eeb65403185377e6ddd98c3bbffe3f3ab99098",
+      "validation_bank": "a100a9e9edb0a047ec8e546fb1d7842e1067fb6f7611b14ae2cd7fe91a3a6a16",
+      "best_model_stats": "f6a0a015a9d87c5f71731e07218157a44cf09729b847f93aef7c32a608ad9bde",
+      "robust_best_model_stats": "c71d65683302157a6d778e4ee65e3fb012d12f879f0ef6d05b658841e7808fdb",
+      "final_model_stats": "61581da5720120efa29b250c66d721d32a2a460a43d62fc5d00fa3b527e56161",
+      "action_profile": "250e6943b971b9bf3179de7de0b4260b6f41b45de960cee1525caa00d0a6cee6",
+      "source_hashes": "7e58eee5f99b8e2337e4989934eee12b9ee02e694481f5d95572c78c35fae250"
+    }
+  }
+}

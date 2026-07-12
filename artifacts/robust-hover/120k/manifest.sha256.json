@@ -1,0 +1,175 @@
+{
+  "action_profile": "ct_att_yawrate_v1",
+  "excluded": [
+    "evaluation.npz",
+    "evaluations.npz",
+    "robust_evaluations.npz",
+    "validation_bank.npz",
+    "trajectory bulk",
+    "external substrate source"
+  ],
+  "files": [
+    {
+      "bytes": 1403,
+      "path": "seed-1/action_profile.json",
+      "sha256": "250e6943b971b9bf3179de7de0b4260b6f41b45de960cee1525caa00d0a6cee6"
+    },
+    {
+      "bytes": 6155,
+      "path": "seed-1/evaluation.compact.json",
+      "sha256": "38e9629d94bd0864b806d05397859aa008fecd6f47e9f13a362b898e8904ba19"
+    },
+    {
+      "bytes": 5217,
+      "path": "seed-1/final_model.obsnorm.npz",
+      "sha256": "61581da5720120efa29b250c66d721d32a2a460a43d62fc5d00fa3b527e56161"
+    },
+    {
+      "bytes": 252807,
+      "path": "seed-1/final_model.zip",
+      "sha256": "9d1be43f5ea1ceda49f4eb7dc58ae5d20d66066efe9c8989e886bd8c993b0741"
+    },
+    {
+      "bytes": 5217,
+      "path": "seed-1/robust_best_model.obsnorm.npz",
+      "sha256": "c71d65683302157a6d778e4ee65e3fb012d12f879f0ef6d05b658841e7808fdb"
+    },
+    {
+      "bytes": 252804,
+      "path": "seed-1/robust_best_model.zip",
+      "sha256": "91ac7445fd0fde6485e5ed7782ce54b2c8c0c45e44afdd666064a31f134d8065"
+    },
+    {
+      "bytes": 846,
+      "path": "seed-1/source_hashes.json",
+      "sha256": "7e58eee5f99b8e2337e4989934eee12b9ee02e694481f5d95572c78c35fae250"
+    },
+    {
+      "bytes": 13417,
+      "path": "seed-1/summary.json",
+      "sha256": "f677eb6be774d22e55275ddad9d6facc1fb6e53403c6ea9588cb19b5968eee5f"
+    },
+    {
+      "bytes": 1403,
+      "path": "seed-2/action_profile.json",
+      "sha256": "250e6943b971b9bf3179de7de0b4260b6f41b45de960cee1525caa00d0a6cee6"
+    },
+    {
+      "bytes": 6158,
+      "path": "seed-2/evaluation.compact.json",
+      "sha256": "3320d5b900c1ec92b4098a5f822ea45104270f02b1331ac3f5f1e6401f6e2af3"
+    },
+    {
+      "bytes": 5217,
+      "path": "seed-2/final_model.obsnorm.npz",
+      "sha256": "6a4de2b9787c7f354a22f156535bafbeedb5897f0e97cccebb08b81896553ee4"
+    },
+    {
+      "bytes": 252803,
+      "path": "seed-2/final_model.zip",
+      "sha256": "43239dc1af07c22ebd3173c803c8729eddeceddcbf68571c038286d7c11cbd66"
+    },
+    {
+      "bytes": 5217,
+      "path": "seed-2/robust_best_model.obsnorm.npz",
+      "sha256": "9583d0b40d9483f99cd03426fc0c54328dda21ecb97318ee3906696a69eb351d"
+    },
+    {
+      "bytes": 252800,
+      "path": "seed-2/robust_best_model.zip",
+      "sha256": "f64e0a60e40b00b004cdb6b1a4dca6b132d95c9d7218e817dda45e9ebe86ddb2"
+    },
+    {
+      "bytes": 846,
+      "path": "seed-2/source_hashes.json",
+      "sha256": "7e58eee5f99b8e2337e4989934eee12b9ee02e694481f5d95572c78c35fae250"
+    },
+    {
+      "bytes": 13418,
+      "path": "seed-2/summary.json",
+      "sha256": "9ac623946826de3bc196aa8fa298b268bd4d089a593fce35ae3b76691a48fa54"
+    },
+    {
+      "bytes": 1403,
+      "path": "seed-3/action_profile.json",
+      "sha256": "250e6943b971b9bf3179de7de0b4260b6f41b45de960cee1525caa00d0a6cee6"
+    },
+    {
+      "bytes": 6154,
+      "path": "seed-3/evaluation.compact.json",
+      "sha256": "e7d0b6199cb500361e41a3267deb0041f3efff651017df9ae883b67334940412"
+    },
+    {
+      "bytes": 5217,
+      "path": "seed-3/final_model.obsnorm.npz",
+      "sha256": "ee85bb980d8044669512894f30338f8ccac70492b9ad39f759b4ea6ad33d918b"
+    },
+    {
+      "bytes": 252807,
+      "path": "seed-3/final_model.zip",
+      "sha256": "12a00745472b677efa1d6134d348e47bae937430f04dd5ff69b7cb86d6b79751"
+    },
+    {
+      "bytes": 5217,
+      "path": "seed-3/robust_best_model.obsnorm.npz",
+      "sha256": "5017351cdef8b920fb2e76d2ff09ebb4ce9ef2ee8f73b6328cf6711abfa800e7"
+    },
+    {
+      "bytes": 252804,
+      "path": "seed-3/robust_best_model.zip",
+      "sha256": "4fc89140584f29cfb18f930870a629cc83630ec772de4b1845dd9f0718e53f04"
+    },
+    {
+      "bytes": 846,
+      "path": "seed-3/source_hashes.json",
+      "sha256": "7e58eee5f99b8e2337e4989934eee12b9ee02e694481f5d95572c78c35fae250"
+    },
+    {
+      "bytes": 13418,
+      "path": "seed-3/summary.json",
+      "sha256": "8ae209d96e0f960cc3596fe2011643b41c3592842a2f7f91398d10f7f4327d1d"
+    }
+  ],
+  "record_type": "swift_robust_hover_model_publication",
+  "requested_timesteps": 120000,
+  "schema_version": 1,
+  "scope": "single-drone headless PyBullet stabilized hover; not navigation or real-flight safety evidence",
+  "seeds": [
+    {
+      "evaluation_id": "ct-att-yawrate-v1-120k-seed1-robust-best-r1",
+      "robust_best_score": [
+        100,
+        -0.05457388228168205,
+        370.3442994824168
+      ],
+      "robust_best_timestep": 110000,
+      "run_name": "ppo-hover-ct-att-yawrate-v1-120k-seed1-r1",
+      "seed": 1,
+      "verdict": "accepted"
+    },
+    {
+      "evaluation_id": "ct-att-yawrate-v1-120k-seed2-robust-best-r1",
+      "robust_best_score": [
+        100,
+        -0.04988148193966248,
+        373.07565376356945
+      ],
+      "robust_best_timestep": 100000,
+      "run_name": "ppo-hover-ct-att-yawrate-v1-120k-seed2-r1",
+      "seed": 2,
+      "verdict": "accepted"
+    },
+    {
+      "evaluation_id": "ct-att-yawrate-v1-120k-seed3-robust-best-r1",
+      "robust_best_score": [
+        100,
+        -0.038097808710304146,
+        390.3328163416923
+      ],
+      "robust_best_timestep": 110000,
+      "run_name": "ppo-hover-ct-att-yawrate-v1-120k-seed3-r1",
+      "seed": 3,
+      "verdict": "accepted"
+    }
+  ]
+}

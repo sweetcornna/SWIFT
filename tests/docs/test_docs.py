@@ -80,3 +80,19 @@ def test_readme_documents_pybullet_curriculum_seed_hygiene_and_gates():
     assert "obsolete pre-accumulated-heading evidence" in text
     assert "Current randomized-final status: passed" in text
     assert "passed_gates=10/10" in text
+
+
+def test_docs_define_robust_hover_boundary_and_curated_publication():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    combined = readme + architecture
+    for required in [
+        "ct_att_yawrate_v1",
+        "heldout_robust_lexicographic_v1",
+        "train_rms_physical12_v1",
+        "artifacts/robust-hover/120k",
+        "manifest.sha256.json",
+        "does not replace or alter SWIFT's",
+    ]:
+        assert required in combined
+    assert "not navigation or real-flight safety evidence" in combined
