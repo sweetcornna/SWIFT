@@ -29,6 +29,17 @@ from swift.hover.contracts import (
 TRAIN_SCRIPT = Path("scripts/train_drone_ppo.py")
 EVAL_SCRIPT = Path("scripts/evaluate_drone_ppo.py")
 VIZ_PACKAGE = Path("ppo_viz")
+SOURCE_CONTRACT_FILES = (
+    "scripts/action_profiles.py",
+    "scripts/training_initial_states.py",
+    "scripts/training_reward.py",
+    "scripts/observation_normalization.py",
+    "scripts/robust_validation.py",
+    "scripts/train_drone_ppo.py",
+    "scripts/evaluate_drone_ppo.py",
+    "external/gym-pybullet-drones/gym_pybullet_drones/envs/HoverAviary.py",
+    "external/gym-pybullet-drones/gym_pybullet_drones/envs/BaseAviary.py",
+)
 
 
 class HoverSubstrateError(RuntimeError):
@@ -49,7 +60,7 @@ class ExternalHoverSubstrate:
         object.__setattr__(self, "pixi_executable", pixi.resolve())
 
     def validate(self, *, require_runtime: bool = True) -> dict[str, str]:
-        required = (TRAIN_SCRIPT, EVAL_SCRIPT, VIZ_PACKAGE, Path("scripts/action_profiles.py"))
+        required = (*map(Path, SOURCE_CONTRACT_FILES), VIZ_PACKAGE)
         missing = [str(self.root / item) for item in required if not (self.root / item).exists()]
         if missing:
             raise HoverSubstrateError("external hover substrate is incomplete: " + ", ".join(missing))
@@ -58,12 +69,7 @@ class ExternalHoverSubstrate:
         return {item.as_posix(): file_sha256(self.root / item) for item in required if (self.root / item).is_file()}
 
     def source_hashes(self) -> dict[str, str]:
-        files = (
-            "scripts/action_profiles.py", "scripts/training_initial_states.py",
-            "scripts/training_reward.py", "scripts/observation_normalization.py",
-            "scripts/robust_validation.py", "scripts/train_drone_ppo.py",
-            "scripts/evaluate_drone_ppo.py",
-        )
+        files = SOURCE_CONTRACT_FILES
         missing = [str(self.root / name) for name in files if not (self.root / name).is_file()]
         if missing:
             raise HoverSubstrateError("external hover source contract is incomplete: " + ", ".join(missing))
@@ -96,7 +102,7 @@ def run_training(substrate: ExternalHoverSubstrate, config: HoverTrainingConfig,
         arguments.extend(("--run-name", run_name))
     substrate.run_pixi_python(arguments, timeout=timeout)
     run_dir = output_root / run_name if run_name else _single_new_directory(output_root, before)
-    summary = load_bound_training_summary(run_dir)
+    summary = load_bound_training_summary(run_dir, required_models=MODEL_NAMES)
     _verify_source_contract(substrate, summary)
     _write_swift_sidecars(substrate, run_dir, summary)
     return summary
@@ -175,6 +181,8 @@ def _verify_source_contract(substrate: ExternalHoverSubstrate, summary: dict[str
         "observation_normalization_sha256": "scripts/observation_normalization.py",
         "robust_validation_sha256": "scripts/robust_validation.py",
         "training_script_sha256": "scripts/train_drone_ppo.py",
+        "hover_aviary_sha256": "external/gym-pybullet-drones/gym_pybullet_drones/envs/HoverAviary.py",
+        "base_aviary_sha256": "external/gym-pybullet-drones/gym_pybullet_drones/envs/BaseAviary.py",
     }
     for summary_key, source_path in mapping.items():
         if source.get(summary_key) != expected[source_path]:

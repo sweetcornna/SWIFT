@@ -96,3 +96,17 @@ def test_docs_define_robust_hover_boundary_and_curated_publication():
     ]:
         assert required in combined
     assert "not navigation or real-flight safety evidence" in combined
+    for required in [
+        ".[hover-runtime]",
+        "没有独立托管地址",
+        "scripts/action_profiles.py",
+        "0cdf9fa049ac39152460e7011f61aafffbe51740e9caedb4029d2799da6b41ef",
+        "external/gym-pybullet-drones/gym_pybullet_drones/envs/HoverAviary.py",
+        "351946c80028491f3e8a38da29ff96c6d55181d711629a6927fe2470a21ee0f5",
+        "$modelRoot\\robust_best_model.zip",
+        "$modelRoot\\final_model.zip",
+        "robust_best_model.obsnorm.npz",
+        "final_model.obsnorm.npz",
+        "--dry-run",
+    ]:
+        assert required in readme

@@ -74,8 +74,17 @@ class HoverArtifactError(ValueError):
     pass
 
 
-def load_bound_training_summary(run_dir: str | Path, *, required_models: tuple[str, ...] = MODEL_NAMES) -> dict[str, Any]:
-    """Validate profile/source hashes and the requested exact model/stats bindings."""
+def load_bound_training_summary(
+    run_dir: str | Path, *, required_models: tuple[str, ...] | None = None
+) -> dict[str, Any]:
+    """Validate profile/source hashes and exact bindings for requested or present models.
+
+    By default, every recognized model archive actually present in ``run_dir`` is
+    required.  Callers validating a complete training run may pass ``MODEL_NAMES``;
+    callers selecting one model may pass a one-item tuple.  This keeps curated
+    publications valid when they intentionally omit ``best_model.zip`` without
+    weakening explicit full-run validation.
+    """
     root = Path(run_dir).resolve()
     summary_path = root / "summary.json"
     try:
@@ -109,8 +118,16 @@ def load_bound_training_summary(run_dir: str | Path, *, required_models: tuple[s
         path = root / basename
         if not path.is_file() or hashes.get(key) != file_sha256(path):
             raise HoverArtifactError(f"{key} hash binding mismatch")
+    if required_models is None:
+        required_models = tuple(name for name in MODEL_NAMES if (root / name).is_file())
+        if not required_models:
+            raise HoverArtifactError("no recognized model archives are present")
+    else:
+        required_models = tuple(required_models)
     if any(model_name not in MODEL_NAMES for model_name in required_models):
         raise HoverArtifactError("unknown required model binding")
+    if not required_models:
+        raise HoverArtifactError("required_models must not be empty")
     for model_name in required_models:
         kind = Path(model_name).stem
         binding = bindings.get(kind)

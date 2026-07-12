@@ -10,6 +10,32 @@ from swift.experiments.artifacts import file_sha256
 from swift.hover.contracts import ACTION_PROFILE, PUBLICATION_MODEL_NAMES, load_bound_training_summary
 
 
+EXPECTED_ACCEPTANCE_CHECKS = frozenset({
+    "complete_final_windows",
+    "horizon_errors",
+    "maximum_altitude",
+    "non_finite",
+    "p95_mae",
+    "p95_rmse",
+    "p95_std",
+    "safety_completion",
+    "unsafe",
+    "worst_case_mae",
+})
+EXPECTED_ACCEPTANCE_THRESHOLDS = {
+    "complete_final_window_count": 100,
+    "horizon_error_count": 0,
+    "maximum_altitude_m_max": 2.0,
+    "non_finite_count": 0,
+    "p95_mae_m_max": 0.1,
+    "p95_rmse_m_max": 0.12,
+    "p95_std_m_max": 0.08,
+    "safety_completion_count": 100,
+    "unsafe_count": 0,
+    "worst_case_mae_m_max": 0.2,
+}
+
+
 class HoverPublicationError(ValueError):
     pass
 
@@ -41,7 +67,7 @@ def publish_120k_runs(
         for training_value, evaluation_value in zip(training_runs, evaluation_dirs, strict=True):
             training = Path(training_value).resolve()
             evaluation = Path(evaluation_value).resolve()
-            summary = load_bound_training_summary(training)
+            summary = load_bound_training_summary(training, required_models=PUBLICATION_MODEL_NAMES)
             seed = int(summary["training"]["train_seed"])
             if summary["training"]["requested_timesteps"] != 120_000:
                 raise HoverPublicationError(f"seed {seed} is not a requested 120k run")
@@ -54,15 +80,21 @@ def publish_120k_runs(
                 raise HoverPublicationError(f"seed {seed} evaluation cannot be read: {error}") from error
             robust_binding = summary["model_normalization_bindings"]["robust_best_model"]
             normalization = report.get("normalization", {})
-            checks = report.get("harness_validity_checks", {})
+            harness_checks = report.get("harness_validity_checks", {})
+            acceptance_checks = report.get("acceptance_checks", {})
+            acceptance_thresholds = report.get("acceptance_thresholds", {})
             expected_summary_hash = file_sha256(training / "summary.json")
             if (
                 report.get("model_kind") != "robust_best_model"
                 or report.get("verdict") != "accepted"
                 or report.get("evaluation_valid") is not True
                 or report.get("case_count") != 100
-                or not isinstance(checks, Mapping)
-                or checks.get("full_sampling_contract") is not True
+                or not isinstance(harness_checks, Mapping)
+                or harness_checks.get("full_sampling_contract") is not True
+                or not isinstance(acceptance_checks, Mapping)
+                or set(acceptance_checks) != EXPECTED_ACCEPTANCE_CHECKS
+                or any(value is not True for value in acceptance_checks.values())
+                or acceptance_thresholds != EXPECTED_ACCEPTANCE_THRESHOLDS
             ):
                 raise HoverPublicationError(f"seed {seed} evaluation is not a valid accepted 100-case robust-best evaluation")
             if (
