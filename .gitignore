@@ -14,3 +14,4 @@ outputs/
 runs/
 checkpoints/
 *.log
+.tmp/

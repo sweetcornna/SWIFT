@@ -1,5 +1,5 @@
-pybullet_root: D:\project\pybullet
-pixi_executable: .tools\pixi\pixi.exe
+pybullet_root: ../pybullet
+pixi_executable: .tools/pixi/pixi.exe
 required_tasks:
   - test
   - drone-demo

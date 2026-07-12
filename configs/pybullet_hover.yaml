@@ -1,0 +1,16 @@
+hover:
+  action_profile: ct_att_yawrate_v1
+  initial_state_profile: robust_uniform_v1
+  reward_profile: hover_kin_safe_v1
+  observation_normalization: train_rms_physical12_v1
+  checkpoint_selection: heldout_robust_lexicographic_v1
+  total_timesteps: 100000
+  eval_frequency: 10000
+  eval_episodes: 20
+  validation_cases: 100
+  seed: 1
+  device: cpu
+artifacts:
+  training_root: outputs/pybullet_hover/training
+  evaluation_root: outputs/pybullet_hover/evaluation
+  visualization_root: outputs/pybullet_hover/visualization
